@@ -376,7 +376,7 @@ function xhrGet(url){
   return new Promise(function(resolve,reject){
     var xhr=new XMLHttpRequest();
     xhr.open('GET',url,true);
-    xhr.timeout=40000;
+    xhr.timeout=15000;
     xhr.onload=function(){
       if(xhr.status>=200&&xhr.status<300){
         try{resolve(JSON.parse(xhr.responseText));}
@@ -391,17 +391,10 @@ function xhrGet(url){
  
 async function fetchLive(){
   var q='[out:json][timeout:60];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|living_street|road)$"]["name"](59.20,15.08,59.34,15.36);out body geom;';
-  var st=document.getElementById('load-status');
-  var lastErr;
-  for(var i=0;i<MIRRORS.length;i++){
-    try{
-      st.textContent='Försöker server '+(i+1)+'/'+MIRRORS.length+'…';
-      var json=await xhrGet(MIRRORS[i]+'?data='+encodeURIComponent(q));
-      st.textContent='';
-      return json;
-    }catch(e){lastErr=e;console.warn(MIRRORS[i],e.message);}
-  }
-  throw lastErr;
+  document.getElementById('load-status').textContent='Hämtar gator…';
+  return Promise.any(MIRRORS.map(function(url){
+    return xhrGet(url+'?data='+encodeURIComponent(q));
+  }));
 }
  
 // ═══════════════════════════════════════════════════
@@ -722,10 +715,8 @@ loadAreasGeo().then(function(){fetchLive().then(function(data){
   buildAreaGrid();
   goArea();
 }).catch(function(err){
-  console.error('Live fetch failed:',err);
-  document.getElementById('spinner').style.display='none';
-  document.getElementById('load-status').textContent='';
-  document.getElementById('error-box').style.display='block';
+  console.warn('Live fetch failed, using fallback:',err);
+  loadFallback();
 });});
 </script>
 </body>

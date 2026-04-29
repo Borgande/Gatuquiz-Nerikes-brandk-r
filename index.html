@@ -162,6 +162,7 @@
   <span id="progress-info"></span>
   <span id="qc"></span>
   <div style="display:flex;gap:6px">
+    <button class="sbtn" id="sat-btn" onclick="toggleSatellite()">🛰 Satellit</button>
     <button class="sbtn" onclick="doSkip()">Hoppa ⏭</button>
     <button class="sbtn" onclick="goArea()">Byt område</button>
   </div>
@@ -190,9 +191,14 @@
 //  MAP  – CartoDB No Labels (ingen 403, inga gatunamn)
 // ═══════════════════════════════════════════════════
 const map = L.map('map',{zoomControl:true}).setView([59.274,15.210],13);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png',{
+const tileMap=L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png',{
   attribution:'© OpenStreetMap © CARTO', subdomains:'abcd', maxZoom:20
-}).addTo(map);
+});
+const tileSat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+  attribution:'Tiles © Esri — Maxar, GeoEye, Earthstar Geographics', maxZoom:19
+});
+let isSatellite=false;
+tileMap.addTo(map);
  
 // ═══════════════════════════════════════════════════
 //  AREAS  – GeoJSON polygoner (koordinater: [lon,lat])
@@ -629,6 +635,13 @@ function handleClick(clicked){
   updateProgress();
 }
  
+function toggleSatellite(){
+  if(isSatellite){map.removeLayer(tileSat);tileMap.addTo(map);}
+  else{map.removeLayer(tileMap);tileSat.addTo(map);}
+  isSatellite=!isSatellite;
+  document.getElementById('sat-btn').textContent=isSatellite?'🗺 Karta':'🛰 Satellit';
+}
+
 function doSkip(){
   if(phase!=='playing') return;
   score.skipped++; phase='feedback';

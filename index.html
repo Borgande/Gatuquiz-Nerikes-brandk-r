@@ -108,6 +108,10 @@
     /* ── Progress ───────────────────────────────────── */
     #progress-info{font-size:.76rem;white-space:nowrap;color:#555;font-weight:600}
     #progress-info.has-done{color:#00e676}
+
+    /* ── Area overlay labels ────────────────────────── */
+    .area-lbl{background:rgba(255,100,0,0.88);color:#fff;border:none;border-radius:4px;font-size:.72rem;font-weight:700;white-space:nowrap;padding:2px 7px;box-shadow:none;}
+    .area-lbl::before{display:none}
   </style>
 </head>
 <body>
@@ -136,6 +140,7 @@
   <div id="area-actions">
     <button class="sel-btn" onclick="selAll()">Markera alla</button>
     <button class="sel-btn" onclick="selNone()">Avmarkera alla</button>
+    <button class="sel-btn" onclick="reloadAreas(this)">Ladda om 🔄</button>
   </div>
   <div id="area-grid"></div>
   <p id="sel-info">Inga områden valda</p>
@@ -163,6 +168,7 @@
   <span id="qc"></span>
   <div style="display:flex;gap:6px">
     <button class="sbtn" id="sat-btn" onclick="toggleSatellite()">🛰 Satellit</button>
+    <button class="sbtn" id="areas-btn" onclick="toggleAreasOverlay()">Visa omr.</button>
     <button class="sbtn" onclick="doSkip()">Hoppa ⏭</button>
     <button class="sbtn" onclick="goArea()">Byt område</button>
   </div>
@@ -358,6 +364,7 @@ const correctStreets=new Set();
 const pinnedStyles=new Map(); // name → stilobjekt, ändras ej av hover
 const wrongFlash=new Set();   // tillfälligt röda gator (ej target), hover skall ignoreras
 let quizStartTime=null;
+let areasLayer=null;
  
 // ═══════════════════════════════════════════════════
 //  STYLES
@@ -466,7 +473,7 @@ function addStreet(name,segList){
     polys.push({hit:hit,vis:vis});
   });
   var areas=assignAreas(allCoords);
-  allStreets[name]={polys:polys,bounds:L.latLngBounds(allCoords),areas:areas};
+  allStreets[name]={polys:polys,bounds:L.latLngBounds(allCoords),areas:areas,coords:allCoords};
   areas.forEach(function(a){
     if(!areaStreets[a]) areaStreets[a]=[];
     if(areaStreets[a].indexOf(name)<0) areaStreets[a].push(name);
@@ -635,6 +642,50 @@ function handleClick(clicked){
   updateProgress();
 }
  
+function toggleAreasOverlay(){
+  var btn=document.getElementById('areas-btn');
+  if(areasLayer){
+    map.removeLayer(areasLayer);
+    areasLayer=null;
+    btn.textContent='Visa omr.';
+    btn.style.color='';
+    return;
+  }
+  areasLayer=L.geoJSON(AREAS_GEO,{
+    style:{color:'#ff6400',weight:2,opacity:0.8,fillColor:'#ff6400',fillOpacity:0.07},
+    onEachFeature:function(f,layer){
+      var name=f.properties['Område']||f.properties['name']||'?';
+      layer.bindTooltip(name,{permanent:true,direction:'center',className:'area-lbl'});
+    }
+  }).addTo(map);
+  btn.textContent='Dölj omr.';
+  btn.style.color='#ff6400';
+}
+
+async function reloadAreas(btn){
+  var orig=btn.textContent;
+  btn.textContent='Laddar…';
+  btn.disabled=true;
+  await loadAreasGeo();
+  // Rensa befintliga tilldelningar
+  Object.keys(areaStreets).forEach(function(a){areaStreets[a]=[];});
+  // Tilldela om alla laddade gator
+  Object.keys(allStreets).forEach(function(name){
+    var s=allStreets[name];
+    var areas=assignAreas(s.coords);
+    s.areas=areas;
+    areas.forEach(function(a){
+      if(!areaStreets[a]) areaStreets[a]=[];
+      if(areaStreets[a].indexOf(name)<0) areaStreets[a].push(name);
+    });
+  });
+  buildAreaGrid();
+  // Uppdatera overlay om den är på
+  if(areasLayer){map.removeLayer(areasLayer);areasLayer=null;toggleAreasOverlay();}
+  btn.textContent=orig;
+  btn.disabled=false;
+}
+
 function toggleSatellite(){
   if(isSatellite){map.removeLayer(tileSat);tileMap.addTo(map);}
   else{map.removeLayer(tileMap);tileSat.addTo(map);}

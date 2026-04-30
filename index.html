@@ -13,14 +13,15 @@
   //  FIREBASE CONFIG – Klistra in dina projektnycklar här.
   //  Lämna tomt (alla rader kommenterade) för att köra utan Firestore.
   // ════════════════════════════════════════════════════════════════
-  const FIREBASE_CONFIG={
-    // apiKey:"AIzaSy...",
-    // authDomain:"ditt-projekt.firebaseapp.com",
-    // projectId:"ditt-projekt",
-    // storageBucket:"ditt-projekt.appspot.com",
-    // messagingSenderId:"123456789",
-    // appId:"1:123:web:abc"
-  };
+const firebaseConfig = {
+  apiKey: "AIzaSyA7WuFiHjsP73Z3928h3Ste03zFpgKp5U0",
+  authDomain: "gatuprov-orebro.firebaseapp.com",
+  projectId: "gatuprov-orebro",
+  storageBucket: "gatuprov-orebro.firebasestorage.app",
+  messagingSenderId: "714566761564",
+  appId: "1:714566761564:web:9275fad9fe19ab66457a99"
+};
+
   let db=null;
   try{if(FIREBASE_CONFIG.apiKey){firebase.initializeApp(FIREBASE_CONFIG);db=firebase.firestore();}}
   catch(e){console.warn('Firebase init:',e);}

@@ -6,6 +6,25 @@
   <title>Brandkårens Gatquiz – Örebro</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <script>
+  // ════════════════════════════════════════════════════════════════
+  //  FIREBASE CONFIG – Klistra in dina projektnycklar här.
+  //  Lämna tomt (alla rader kommenterade) för att köra utan Firestore.
+  // ════════════════════════════════════════════════════════════════
+  const FIREBASE_CONFIG={
+    // apiKey:"AIzaSy...",
+    // authDomain:"ditt-projekt.firebaseapp.com",
+    // projectId:"ditt-projekt",
+    // storageBucket:"ditt-projekt.appspot.com",
+    // messagingSenderId:"123456789",
+    // appId:"1:123:web:abc"
+  };
+  let db=null;
+  try{if(FIREBASE_CONFIG.apiKey){firebase.initializeApp(FIREBASE_CONFIG);db=firebase.firestore();}}
+  catch(e){console.warn('Firebase init:',e);}
+  </script>
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:'Segoe UI',sans-serif;background:#0d0d0d;color:#fff;height:100vh;display:flex;flex-direction:column;overflow:hidden}
@@ -112,6 +131,16 @@
     /* ── Area overlay labels ────────────────────────── */
     .area-lbl{background:rgba(255,100,0,0.88);color:#fff;border:none;border-radius:4px;font-size:.72rem;font-weight:700;white-space:nowrap;padding:2px 7px;box-shadow:none;}
     .area-lbl::before{display:none}
+
+    /* ── Leaderboard ────────────────────────────────── */
+    .lb-table{width:100%;border-collapse:collapse;font-size:.85rem}
+    .lb-table th{background:#1a1a1a;color:#ff6400;text-align:left;padding:8px 10px;border-bottom:2px solid #2a2a2a;font-size:.75rem;text-transform:uppercase;letter-spacing:.5px}
+    .lb-table td{padding:8px 10px;border-bottom:1px solid #1a1a1a;color:#ccc}
+    .lb-table tr:hover td{background:rgba(255,100,0,0.05)}
+    .lb-rank{color:#555;font-weight:700;width:28px}
+    .lb-pct{color:#00e676;font-weight:800}
+    .lb-group-hdr{color:#ff6400;font-size:.82rem;font-weight:700;margin:20px 0 8px;padding-bottom:4px;border-bottom:1px solid #2a2a2a;text-transform:uppercase;letter-spacing:.5px}
+    .lb-msg{color:#555;font-size:.88rem;text-align:center;padding:28px}
   </style>
 </head>
 <body>
@@ -137,6 +166,12 @@
   <div style="font-size:2.2rem">🗺️</div>
   <h2>Välj område att öva på</h2>
   <div id="data-source-badge" class="badge-live">● Live-data från OpenStreetMap</div>
+  <div style="display:flex;align-items:center;gap:8px;width:100%;max-width:580px">
+    <label for="player-name" style="color:#666;font-size:.82rem;white-space:nowrap">Ditt namn:</label>
+    <input id="player-name" type="text" maxlength="30" placeholder="Anonym"
+      style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;color:#fff;
+             padding:8px 12px;font-size:.88rem;flex:1;min-height:44px;outline:none"/>
+  </div>
   <div id="area-actions">
     <button class="sel-btn" onclick="selAll()">Markera alla</button>
     <button class="sel-btn" onclick="selNone()">Avmarkera alla</button>
@@ -189,6 +224,35 @@
   <div class="ebtns">
     <button class="ebtn" style="background:rgba(255,255,255,0.1)" onclick="goArea()">Byt område 🗺️</button>
     <button class="ebtn" style="background:#ff6400;color:#fff" onclick="restart()">Öva igen 🔄</button>
+  </div>
+  <button class="ebtn" style="background:transparent;border:1px solid #ff6400;color:#ff6400;margin-top:8px"
+    onclick="openLeaderboard()">Topplista 🏆</button>
+</div>
+
+<!-- LEADERBOARD OVERLAY -->
+<div id="lb-overlay" style="display:none;position:fixed;inset:0;background:#0d0d0d;z-index:3000;flex-direction:column;overflow:hidden">
+  <div style="background:#111;border-bottom:2px solid #ff6400;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+    <span style="color:#ff6400;font-size:1.1rem;font-weight:800">🏆 Topplista</span>
+    <button onclick="closeLeaderboard()" style="background:transparent;border:1px solid #444;color:#888;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.88rem">Stäng ✕</button>
+  </div>
+  <div style="display:flex;border-bottom:1px solid #222;flex-shrink:0;background:#111">
+    <button id="lb-tab-omrade" onclick="switchLbTab('omrade')"
+      style="flex:1;background:transparent;border:none;border-bottom:3px solid #ff6400;color:#ff6400;padding:12px 0;font-size:.9rem;font-weight:700;cursor:pointer">Område</button>
+    <button id="lb-tab-kombo" onclick="switchLbTab('kombo')"
+      style="flex:1;background:transparent;border:none;border-bottom:3px solid transparent;color:#555;padding:12px 0;font-size:.9rem;font-weight:700;cursor:pointer">Kombinationer</button>
+  </div>
+  <div id="lb-pane-omrade" style="flex:1;overflow-y:auto;padding:16px">
+    <div style="margin-bottom:12px">
+      <label style="color:#666;font-size:.8rem">Välj område:</label>
+      <select id="lb-area-select" onchange="loadAreaTab()"
+        style="background:#1a1a1a;border:1px solid #2a2a2a;color:#fff;border-radius:8px;padding:8px 12px;font-size:.88rem;width:100%;margin-top:4px;cursor:pointer">
+        <option value="">– välj –</option>
+      </select>
+    </div>
+    <div id="lb-area-table"></div>
+  </div>
+  <div id="lb-pane-kombo" style="display:none;flex:1;overflow-y:auto;padding:16px">
+    <div id="lb-kombo-content"></div>
   </div>
 </div>
  
@@ -541,6 +605,7 @@ function updateSelInfo(){
   document.getElementById('start-btn').disabled=(total===0);
 }
 function goArea(){
+  closeLeaderboard();
   if(autoAdvanceTimer){clearTimeout(autoAdvanceTimer);autoAdvanceTimer=null;}
   activeNames.forEach(function(n){applyStyle(n,S.hidden);});
   pinnedStyles.clear();
@@ -717,6 +782,7 @@ function showEnd(){
   var total=score.correct+score.wrong+score.skipped;
   var pct=Math.round((score.correct/total)*100);
   var elapsed=quizStartTime?Math.round((Date.now()-quizStartTime)/1000):0;
+  saveResult(pct,elapsed,total);
   var mm=Math.floor(elapsed/60), ss=elapsed%60;
   document.getElementById('end-big').textContent=score.correct+'/'+total+' rätt ('+pct+'%)';
   document.getElementById('e-c').textContent=score.correct;
@@ -804,6 +870,135 @@ loadAreasGeo().then(function(){fetchLive().then(function(data){
   console.warn('Live fetch failed, using fallback:',err);
   loadFallback();
 });});
+
+// ═══════════════════════════════════════════════════
+//  NAMN – localStorage
+// ═══════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded',function(){
+  var inp=document.getElementById('player-name');
+  if(!inp) return;
+  inp.value=localStorage.getItem('gatquiz_name')||'';
+  inp.addEventListener('input',function(){localStorage.setItem('gatquiz_name',this.value.trim());});
+});
+
+// ═══════════════════════════════════════════════════
+//  SPARA RESULTAT TILL FIRESTORE
+// ═══════════════════════════════════════════════════
+function saveResult(pct,elapsed,total){
+  if(!db) return;
+  var name=((document.getElementById('player-name')||{}).value||'').trim()||'Anonym';
+  var areasArr=Array.from(selectedAreas).sort();
+  db.collection('results').add({
+    name:name,
+    areas:areasArr,
+    areasKey:areasArr.join(' + ')||'Okänt',
+    correct:score.correct,
+    wrong:score.wrong,
+    skipped:score.skipped,
+    total:total,
+    pct:pct,
+    elapsed:elapsed,
+    timestamp:firebase.firestore.FieldValue.serverTimestamp()
+  }).catch(function(e){console.warn('Firestore save:',e);});
+}
+
+// ═══════════════════════════════════════════════════
+//  TOPPLISTA
+// ═══════════════════════════════════════════════════
+var lbCurrentTab='omrade';
+
+function openLeaderboard(){
+  var ov=document.getElementById('lb-overlay');
+  ov.style.display='flex';
+  ov.style.flexDirection='column';
+  var sel=document.getElementById('lb-area-select');
+  sel.innerHTML='<option value="">– välj –</option>';
+  Object.keys(areaStreets).sort().forEach(function(a){
+    if(!(areaStreets[a]||[]).length) return;
+    var o=document.createElement('option');
+    o.value=a; o.textContent=a; sel.appendChild(o);
+  });
+  switchLbTab(lbCurrentTab);
+}
+
+function closeLeaderboard(){
+  document.getElementById('lb-overlay').style.display='none';
+}
+
+function switchLbTab(name){
+  lbCurrentTab=name;
+  var isOmr=(name==='omrade');
+  var tO=document.getElementById('lb-tab-omrade');
+  var tK=document.getElementById('lb-tab-kombo');
+  tO.style.borderBottomColor=isOmr?'#ff6400':'transparent';
+  tO.style.color=isOmr?'#ff6400':'#555';
+  tK.style.borderBottomColor=isOmr?'transparent':'#ff6400';
+  tK.style.color=isOmr?'#555':'#ff6400';
+  document.getElementById('lb-pane-omrade').style.display=isOmr?'block':'none';
+  document.getElementById('lb-pane-kombo').style.display=isOmr?'none':'block';
+  if(isOmr) loadAreaTab(); else loadKomboTab();
+}
+
+function lbEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+function lbFmtTime(s){var m=Math.floor(s/60);return m+':'+(s%60<10?'0':'')+(s%60);}
+
+function lbFmtDate(ts){
+  if(!ts) return '–';
+  var d=ts.toDate?ts.toDate():new Date(ts);
+  return d.toLocaleDateString('sv-SE',{month:'short',day:'numeric'});
+}
+
+function lbSort(arr){
+  return arr.slice().sort(function(a,b){return b.pct!==a.pct?b.pct-a.pct:a.elapsed-b.elapsed;});
+}
+
+function lbRenderTable(rows,el){
+  if(!rows.length){el.innerHTML='<div class="lb-msg">Inga resultat ännu.</div>';return;}
+  var h='<table class="lb-table"><thead><tr><th class="lb-rank">#</th><th>Namn</th>'+
+    '<th>%</th><th>Rätt</th><th>Tid</th><th>Datum</th></tr></thead><tbody>';
+  lbSort(rows).forEach(function(r,i){
+    h+='<tr><td class="lb-rank">'+(i+1)+'</td><td>'+lbEsc(r.name)+'</td>'+
+      '<td class="lb-pct">'+r.pct+'%</td><td>'+r.correct+'/'+r.total+'</td>'+
+      '<td>'+lbFmtTime(r.elapsed)+'</td><td>'+lbFmtDate(r.timestamp)+'</td></tr>';
+  });
+  el.innerHTML=h+'</tbody></table>';
+}
+
+function loadAreaTab(){
+  var area=document.getElementById('lb-area-select').value;
+  var cont=document.getElementById('lb-area-table');
+  if(!db){cont.innerHTML='<div class="lb-msg">Firebase ej konfigurerat.</div>';return;}
+  if(!area){cont.innerHTML='<div class="lb-msg">Välj ett område ovan.</div>';return;}
+  cont.innerHTML='<div class="lb-msg">Laddar…</div>';
+  db.collection('results').where('areas','array-contains',area).get()
+    .then(function(snap){var r=[];snap.forEach(function(d){r.push(d.data());});lbRenderTable(r,cont);})
+    .catch(function(e){cont.innerHTML='<div class="lb-msg">Fel: '+lbEsc(e.message)+'</div>';});
+}
+
+function loadKomboTab(){
+  var cont=document.getElementById('lb-kombo-content');
+  if(!db){cont.innerHTML='<div class="lb-msg">Firebase ej konfigurerat.</div>';return;}
+  cont.innerHTML='<div class="lb-msg">Laddar…</div>';
+  db.collection('results').get().then(function(snap){
+    var groups={};
+    snap.forEach(function(doc){
+      var d=doc.data(); var k=d.areasKey||'Okänt';
+      if(!groups[k]) groups[k]=[];
+      groups[k].push(d);
+    });
+    var keys=Object.keys(groups).sort();
+    if(!keys.length){cont.innerHTML='<div class="lb-msg">Inga resultat ännu.</div>';return;}
+    var html='';
+    keys.forEach(function(k){
+      html+='<div class="lb-group-hdr">'+lbEsc(k)+'</div>';
+      var tmp=document.createElement('div');
+      lbRenderTable(groups[k],tmp);
+      html+=tmp.innerHTML;
+    });
+    cont.innerHTML=html;
+  }).catch(function(e){cont.innerHTML='<div class="lb-msg">Fel: '+lbEsc(e.message)+'</div>';});
+}
 </script>
 </body>
 </html>

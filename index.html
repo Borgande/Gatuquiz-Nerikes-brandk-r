@@ -23,7 +23,7 @@ const firebaseConfig = {
 };
 
   let db=null;
-  try{if(FIREBASE_CONFIG.apiKey){firebase.initializeApp(FIREBASE_CONFIG);db=firebase.firestore();}}
+  try{if(firebaseConfig.apiKey){firebase.initializeApp(firebaseConfig);db=firebase.firestore();}}
   catch(e){console.warn('Firebase init:',e);}
   </script>
   <style>

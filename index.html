@@ -471,7 +471,7 @@ function xhrGet(url){
 }
  
 async function fetchLive(){
-  var q='[out:json][timeout:60];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|living_street|road)$"]["name"](59.20,15.08,59.34,15.36);out body geom;';
+  var q='[out:json][timeout:60];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|living_street|road)$"]["name"](59.20,15.08,59.37,15.40);out body geom;';
   document.getElementById('load-status').textContent='Hämtar gator…';
   return Promise.any(MIRRORS.map(function(url){
     return xhrGet(url+'?data='+encodeURIComponent(q));

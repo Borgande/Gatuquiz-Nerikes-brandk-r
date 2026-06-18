@@ -705,7 +705,10 @@ function buildAreaQuizLayer(){
   if(areaQuizGroup){map.removeLayer(areaQuizGroup);areaQuizGroup=null;}
   areaQuizLayers={};
   areaQuizGroup=L.geoJSON(AREAS_GEO,{
-    filter:function(f){return activeNames.indexOf(f.properties['Område'])>=0;},
+    filter:function(f){
+      return (f.geometry.type==='Polygon'||f.geometry.type==='MultiPolygon')
+        &&activeNames.indexOf(f.properties['Område'])>=0;
+    },
     style:function(){return {color:S.normal.color,weight:S.normal.weight,opacity:S.normal.opacity,fillColor:S.normal.color,fillOpacity:0.12};},
     onEachFeature:function(f,layer){
       var name=f.properties['Område'];

@@ -77,7 +77,7 @@ const firebaseConfig = {
     #map{flex:1;position:relative}
     #hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,100,0,0.9);color:#fff;padding:8px 20px;border-radius:24px;font-size:.84rem;font-weight:600;pointer-events:none;z-index:800;opacity:0;transition:opacity .2s}
     #hint.show{opacity:1}
-    #wrong-toast{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#ff6666;padding:5px 16px;border-radius:20px;font-size:.78rem;font-weight:600;pointer-events:none;z-index:800;opacity:0;transition:opacity .25s;white-space:nowrap}
+    #wrong-toast{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#ff6666;padding:5px 16px;border-radius:20px;font-size:2.34rem;font-weight:600;pointer-events:none;z-index:800;opacity:0;transition:opacity .25s;white-space:nowrap}
     #wrong-toast.show{opacity:1}
     #end{position:fixed;inset:0;background:rgba(8,5,0,0.97);z-index:2000;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
     #end.show{display:flex}
@@ -871,10 +871,10 @@ function showWrongToast(name){
   el.textContent=name;
   el.classList.add('show');
   if(wrongToastTimer) clearTimeout(wrongToastTimer);
-  wrongToastTimer=setTimeout(function(){el.classList.remove('show');},1800);
+  wrongToastTimer=setTimeout(function(){el.classList.remove('show');},7000);
 }
 function handleClick(clicked){
-  if(phase!=='playing'||!isActive(clicked)) return;
+  if(phase!=='playing'||!isActive(clicked)||pinnedStyles.has(clicked)) return;
   var target=queue[idx];
   if(clicked===target){
     phase='feedback';

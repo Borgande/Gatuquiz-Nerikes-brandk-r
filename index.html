@@ -51,7 +51,7 @@ const firebaseConfig = {
     .area-btn .sc{display:block;font-size:.68rem;color:#555;font-weight:400;margin-top:2px}
     .area-btn.selected .sc{color:#ff6400;opacity:.7}
     #area-actions{display:flex;gap:10px}
-    .sel-btn{background:transparent;border:1px solid #333;color:#777;border-radius:7px;padding:5px 14px;cursor:pointer;font-size:.78rem}
+    .sel-btn{background:rgba(255,255,255,0.04);border:1px solid #3a3a3a;color:#aaa;border-radius:7px;padding:5px 14px;cursor:pointer;font-size:.78rem}
     .sel-btn:hover{border-color:#ff6400;color:#ff6400}
     #sel-info{color:#777;font-size:.8rem}
     #start-btn{background:#ff6400;color:#fff;border:none;border-radius:12px;padding:13px 38px;font-size:1rem;font-weight:700;cursor:pointer}
@@ -70,7 +70,7 @@ const firebaseConfig = {
     #sub-bar{background:#0d0d0d;border-bottom:1px solid rgba(255,100,0,0.12);padding:5px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
     #instr{color:#777;font-size:.78rem}
     #qc{color:#444;font-size:.75rem;white-space:nowrap}
-    .sbtn{background:transparent;border:1px solid #2a2a2a;color:#555;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:.74rem;white-space:nowrap}
+    .sbtn{background:rgba(255,255,255,0.04);border:1px solid #3a3a3a;color:#999;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:.74rem;white-space:nowrap}
     .sbtn:hover{border-color:#ff6400;color:#ff6400}
     #prog-wrap{height:3px;background:rgba(255,100,0,0.1);flex-shrink:0}
     #prog{height:100%;background:#ff6400;transition:width .4s}
@@ -135,7 +135,7 @@ const firebaseConfig = {
 
     /* ── Kommunväljare ─────────────────────────────── */
     #muni-bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
-    .muni-btn{background:transparent;border:2px solid #2a2a2a;color:#555;border-radius:10px;padding:8px 18px;cursor:pointer;font-size:.88rem;font-weight:700;min-height:44px;transition:all .2s}
+    .muni-btn{background:rgba(255,255,255,0.04);border:2px solid #3a3a3a;color:#999;border-radius:10px;padding:8px 18px;cursor:pointer;font-size:.88rem;font-weight:700;min-height:44px;transition:all .2s}
     .muni-btn:hover{border-color:#ff6400;color:#ccc}
     .muni-btn.active{background:rgba(255,100,0,0.15);border-color:#ff6400;color:#ff6400}
     .muni-btn:disabled{opacity:.55;cursor:wait}
@@ -436,6 +436,7 @@ const FALLBACK_STREETS = [
 // ═══════════════════════════════════════════════════
 const allStreets={};
 const areaStreets={};
+let roundaboutPolys=[]; // hit+vis-polylines för rondeller – hålls alltid överst
 let selectedAreas=new Set(), activeNames=[];
 let queue=[], idx=0, score={correct:0,wrong:0,skipped:0}, phase='loading';
 let dataSource='live';
@@ -551,10 +552,10 @@ function assignAreas(allCoords){
   return matches.length>0?matches:['Övrigt'];
 }
  
-function addStreet(name,segList){
+function addStreet(name,segList,roundFlags){
   if(allStreets[name]) return; // no duplicates
   var polys=[],allCoords=[];
-  segList.forEach(function(coords){
+  segList.forEach(function(coords,i){
     allCoords=allCoords.concat(coords);
     var hit=L.polyline(coords,{color:'transparent',weight:22,opacity:0,interactive:true});
     var vis=L.polyline(coords,Object.assign({},S.hidden,{interactive:false}));
@@ -562,6 +563,7 @@ function addStreet(name,segList){
     hit.on('mouseover',function(){if(phase==='playing'&&isActive(name)&&!pinnedStyles.has(name)&&!wrongFlash.has(name))applyStyle(name,S.hover);});
     hit.on('mouseout', function(){if(phase==='playing'&&isActive(name)&&!wrongFlash.has(name))applyStyle(name,pinnedStyles.get(name)||S.normal);});
     hit.addTo(map); vis.addTo(map);
+    if(roundFlags&&roundFlags[i]) roundaboutPolys.push(hit,vis);
     polys.push({hit:hit,vis:vis});
   });
   var areas=assignAreas(allCoords);
@@ -573,15 +575,21 @@ function addStreet(name,segList){
   document.getElementById('load-count').textContent=Object.keys(allStreets).length;
 }
  
+function bringRoundaboutsToFront(){
+  roundaboutPolys.forEach(function(p){p.bringToFront();});
+}
+
 function buildFromOSM(data){
   var groups={};
   data.elements.forEach(function(way){
     var n=way.tags&&way.tags.name;
     if(!n||!way.geometry||!way.geometry.length) return;
-    if(!groups[n]) groups[n]=[];
-    groups[n].push(way.geometry.map(function(g){return[g.lat,g.lon];}));
+    if(!groups[n]) groups[n]={segs:[],round:[]};
+    groups[n].segs.push(way.geometry.map(function(g){return[g.lat,g.lon];}));
+    groups[n].round.push(way.tags.junction==='roundabout');
   });
-  Object.keys(groups).forEach(function(name){addStreet(name,groups[name]);});
+  Object.keys(groups).forEach(function(name){addStreet(name,groups[name].segs,groups[name].round);});
+  bringRoundaboutsToFront();
 }
  
 function buildFromFallback(){

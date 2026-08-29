@@ -1,3 +1,11 @@
 .claude/
-areas.geojson backup
 satellite.html
+
+# Backup-filer av områdesdata — behålls lokalt, ska inte till GitHub Pages
+areas.geojson backup*
+areasbackup*
+*.geojson.bak
+
+# Python
+__pycache__/
+*.pyc

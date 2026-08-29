@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "defaultStation": "nerikes/orebro",
+  "orgs": [
+    {
+      "id": "nerikes",
+      "label": "Nerikes Brandkår",
+      "stations": [
+        {
+          "id": "orebro",
+          "label": "Örebro",
+          "title": "Gatuprov Örebro",
+          "center": [59.274, 15.21],
+          "zoom": 13,
+          "areasUrl": "areas.geojson",
+          "defaultSources": ["orebro"],
+          "sources": [
+            {
+              "id": "orebro",
+              "label": "Örebro",
+              "bbox": "(59.20,15.08,59.37,15.40)",
+              "streetsUrl": "data/nerikes-orebro.streets.json"
+            }
+          ]
+        },
+        {
+          "id": "byrsta",
+          "label": "Byrsta",
+          "title": "Gatuprov Byrsta",
+          "center": [59.1, 15.105],
+          "zoom": 12,
+          "areasUrl": "areas.geojson",
+          "defaultSources": ["kumla", "hallsberg"],
+          "sources": [
+            {
+              "id": "kumla",
+              "label": "Kumla",
+              "bbox": "(59.06,15.05,59.20,15.35)",
+              "streetsUrl": "data/nerikes-kumla.streets.json"
+            },
+            {
+              "id": "hallsberg",
+              "label": "Hallsberg",
+              "bbox": "(58.97,14.87,59.14,15.22)",
+              "streetsUrl": "data/nerikes-hallsberg.streets.json"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

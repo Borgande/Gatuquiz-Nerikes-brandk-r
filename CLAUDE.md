@@ -1,4 +1,4 @@
-# CLAUDE.md – Brandkårens Gatquiz
+# CLAUDE.md – Gatuprov Örebro
 
 Den här filen hjälper Claude att förstå projektet direkt utan att behöva läsa all kod.
 
@@ -6,7 +6,8 @@ Den här filen hjälper Claude att förstå projektet direkt utan att behöva l�
 
 ## 1. Projektbeskrivning
 
-**Brandkårens Gatquiz** – ett gatunamnsquiz för Nerikes Brandkår i Örebro.
+**Gatuprov Örebro** (tidigare "Brandkårens Gatquiz") – ett gatunamnsquiz ursprungligen för
+Nerikes Brandkår, nu med stöd för flera kommuner (Örebro, Kumla, Hallsberg).
 Användaren visas ett gatunamn och ska klicka rätt gata på kartan.
 Byggt som en enda självständig `index.html` — ingen build-step, ingen pakethanterare, ingen server.
 
@@ -28,12 +29,21 @@ Byggt som en enda självständig `index.html` — ingen build-step, ingen paketh
 ## 3. Filstruktur
 
 ```
-index.html          – allt: CSS + HTML + JS i en fil (~1 000 rader)
-areas.geojson       – 37 GeoJSON-polygoner (egenskapen "Område" per feature)
-pusha.bat           – git add index.html areas.geojson → commit → push origin main
-CLAUDE.md           – den här filen
-.gitignore          – .claude/, "areas.geojson backup", satellite.html
+index.html             – allt: CSS + HTML + JS i en fil (~1 100 rader)
+areas.geojson          – 40 GeoJSON-polygoner ("Område" + "station" per feature)
+tenants.json           – organisationer och stationer (bbox, startvy, datafiler)
+tools/build-streets.py – hämtar Overpass → förgenererad gatudata i data/
+tools/test-areas.js    – regressionstest för områdeslogiken (`node tools/test-areas.js`)
+firestore.rules        – Firestore-regler (klistras in manuellt i Firebase Console)
+serva.bat              – startar lokal webbserver på :8000 och öppnar webbläsaren
+data/*.streets.json    – förgenererad gatudata per datakälla
+pusha.bat              – git add -A → commit → push origin main
+CLAUDE.md              – den här filen
+.gitignore             – .claude/, satellite.html, backup-filer
 ```
+
+Backup-filerna (`areas.geojson backup2`, `areasbackup 260515.geojson`) är nu
+ignorerade via mönstren `areas.geojson backup*` och `areasbackup*`.
 
 **GitHub:** `https://github.com/Borgande/Gatuquiz-Nerikes-brandk-r`
 **GitHub Pages:** `https://borgande.github.io/Gatuquiz-Nerikes-brandk-r/`
@@ -45,12 +55,14 @@ CLAUDE.md           – den här filen
 - **CSS** rader ~29–145  
   Färgpalett: `#ff6400` (orange), `#0d0d0d` (bakgrund), `#00e676` (rätt), `#ff4444` (fel), `#3a7cbf` (normal gata)
 
-- **HTML** rader ~147–258 — fem skärmar visade/dolda via `display`:
+- **HTML** rader ~147–260 — fem skärmar visade/dolda via `display`:
   - `#loading-screen` – visas under OSM-hämtning
-  - `#area-screen` – välj område(n), namnfält, "Ladda om"-knapp
-  - `header` + `#sub-bar` + `#map` – själva quizet (satellit- och areaknapp i sub-bar)
+  - `#area-screen` – välj kommun(er) via `#muni-bar`, välj område(n), namnfält,
+    "Ladda om"-knapp och **"Topplista 🏆"-knapp** direkt på startsidan
+  - `header` + `#sub-bar` + `#map` – själva quizet.
+    Sub-bar innehåller `🛰 Satellit`, `Visa omr.`, `Hoppa ⏭`, `Byt område`
   - `#end` – resultatskärm (rätt/fel/hoppat, tid, procent, topplista-knapp)
-  - `#lb-overlay` – topplista-overlay (z-index 3000)
+  - `#lb-overlay` – topplista-overlay (z-index 9000)
 
 - **JavaScript** rader ~260–slutet — all logik i ett `<script>`-block
 
@@ -59,23 +71,28 @@ CLAUDE.md           – den här filen
 ## 5. Viktiga globala variabler
 
 ```js
-allStreets    // {name → {polys, bounds, areas, coords}} – alla laddade gator
-areaStreets   // {områdespnamn → [gatunamn]}
-selectedAreas // Set av valda områden
-queue         // shufflad lista av gatunamn för aktuell session
-idx           // index i queue
-score         // {correct, wrong, skipped}
-phase         // 'loading'|'area'|'playing'|'feedback'|'end'
-dataSource    // 'live'|'fallback'
-attemptsLeft  // 3 per fråga; 0 → auto-advance efter 2.8 s
-correctStreets// Set av korrekt besvarade gator (visas inte igen samma session)
-pinnedStyles  // Map name → stilobjekt — hover ändrar EJ pinnad stil
-wrongFlash    // Set av tillfälligt röda gator — hover ignoreras
-quizStartTime // Date.now() vid quizstart
-areasLayer    // Leaflet-lager för polygonöverlägg (null = dolt)
-lbCurrentTab  // 'omrade'|'kombo'
-isSatellite   // boolean
-AREAS_GEO     // aktiv GeoJSON (byts ut mot areas.geojson om den laddas)
+allStreets       // {name → {polys, bounds, areas, coords}} – alla laddade gator
+areaStreets      // {områdesnamn → [gatunamn]}
+selectedAreas    // Set av valda områden
+TENANTS          // hela tenants.json (TENANTS_FALLBACK om filen inte går att läsa)
+ORG              // aktiv organisation {id,label,stations}
+STATION          // aktiv station {id,label,title,center,zoom,areasUrl,sources}
+activeSources    // Set av valda datakälle-id inom stationen
+loadedSources    // Set av källor vars gatudata redan hämtats (cache)
+queue          // shufflad lista av gatunamn för aktuell session
+idx            // index i queue
+score          // {correct, wrong, skipped}
+phase          // 'loading'|'area'|'playing'|'feedback'|'end'
+dataSource     // 'live'|'fallback'
+attemptsLeft   // 3 per fråga; 0 → auto-advance efter 2.8 s
+correctStreets // Set av korrekt besvarade gator (visas inte igen samma session)
+pinnedStyles   // Map name → stilobjekt — hover ändrar EJ pinnad stil
+wrongFlash     // Set av tillfälligt röda gator — hover ignoreras
+quizStartTime  // Date.now() vid quizstart
+areasLayer     // Leaflet-lager för polygonöverlägg (null = dolt)
+lbCurrentTab   // 'omrade'|'kombo'
+isSatellite    // boolean
+AREAS_GEO      // aktiv GeoJSON (byts ut mot areas.geojson om den laddas)
 ```
 
 ---
@@ -110,15 +127,95 @@ S.hidden  = {color:'transparent', weight:0, opacity:0}
 
 ---
 
+## 7b. Organisationer, stationer och datakällor (`tenants.json`)
+
+Hierarkin är **organisation → station → datakälla**.
+
+- **Station** = enheten som har egen karta, egna områden, egen titel och (planerat)
+  egen topplista. En ny station läggs till genom att lägga till **data**, inte kod.
+- **Datakälla** = en bbox + en förgenererad gatufil. En station kan ha flera:
+  `orebro` har en, `byrsta` har två (Kumla + Hallsberg).
+
+Nuvarande innehåll:
+
+| Station | Titel | Källor |
+|---|---|---|
+| `orebro` | Gatuprov Örebro | orebro |
+| `byrsta` | Gatuprov Byrsta | kumla, hallsberg |
+
+**Val av station** — `#station-bar` på områdesskärmen listar alla stationer, med
+stationens orter i mindre text under namnet (härlett ur `sources[].label`) så att man
+ser att t.ex. Kumla ligger under Byrsta. `switchStation()` byter genom att sätta
+`localStorage` och ladda om sidan med `?org=&station=` — `applyStation()` rensar
+**inte** `allStreets`/`areaStreets`/`selectedAreas`/kartlagren, så omladdning är
+säkrare än att riva staten för hand.
+
+`resolveStation()` avgör startstation i prioritetsordning:
+`?org=&station=` → `localStorage` (`gq_org`/`gq_station`) → `defaultStation` → första stationen.
+Utan parametrar landar man alltså på Örebro precis som förut.
+
+**Laddning** — `loadSource(id)` läser i första hand `streetsUrl` (förgenererad fil) och
+faller tillbaka på Overpass endast om filen saknas. Källor cachas i `loadedSources`.
+Knapparna i `#muni-bar` renderas av `buildSourceBar()`; har stationen bara **en** källa
+döljs hela raden.
+
+**Områdestillhörighet** — varje feature i `areas.geojson` har både `station` och `source`.
+`getStation()` styr vilka områden som hör till stationen, `getSource()` styr under vilken
+rubrik de grupperas och vad som avmarkeras när en källa stängs av. Begreppen är skilda
+just för att Byrsta är **en** station med **två** källor.
+
+---
+
+## 7c. Förgenererad gatudata (`tools/build-streets.py`)
+
+Appen hämtar **inte** gator från Overpass vid start. Datan förgenereras och läses
+från `data/<org>-<källa>.streets.json`.
+
+```bash
+python tools/build-streets.py            # alla källor som saknar fil
+python tools/build-streets.py hallsberg  # tvinga om en enskild källa
+```
+
+Format: `{org, station, source, bbox, generated, count, streets:{namn:[[[lat,lon],…]]}}`
+— `streets` matchar exakt vad `addStreet(namn, segList)` förväntar sig.
+
+Nuläge: Örebro 1 266 gator, Kumla 543, Hallsberg 579 (mot 121 i den gamla reservlistan).
+
+⚠️ **Kumla- och Hallsberg-bbox:arna överlappar** (59.06–59.14 delas), så 395 gatunamn
+finns i båda filerna. `addStreet()` har `if(allStreets[name]) return` — första källan
+som laddar vinner, resten kastas. Byrsta får därför 727 unika gator av 1 122 poster,
+och eftersom källorna laddas parallellt kan områdesantalen variera några gator mellan
+sidladdningar. Quizet fungerar, men en gata med samma namn i båda orterna visas bara
+på ett ställe. Snävare bbox:ar vid nästa körning av `build-streets.py` löser det.
+
+**Varför:** Overpass svarar ofta 429/504 och kostade ~15 s vid varje sidladdning.
+Under utvecklingen av detta slog alla tre speglarna fel flera gånger, och ett
+för snabbt anrop gav 429. Skriptet pausar därför 20 s mellan källor, väntar 60 s
+vid 429/504, och skickar en riktig `User-Agent` (utan den svarar Overpass **406**).
+
+Kör om skriptet när gatunätet har ändrats — några gånger om året räcker.
+
+---
+
 ## 8. Områden och areas.geojson
 
 - GeoJSON FeatureCollection; koordinater i **[lon, lat]**-ordning (GeoJSON-standard)
-- Varje feature har `properties.Område` = områdespnamn (sträng)
-- `areas.geojson` laddas via XHR vid start; `AREAS_GEO_FALLBACK` är inbakad reserv (35 områden)
+- Varje feature har `properties.Område` (områdesnamn) och `properties.station`
+  (`orebro`/`kumla`/`hallsberg`) — 40 features, alla Polygon
+- `areas.geojson` laddas via XHR vid start; `AREAS_GEO_FALLBACK` är inbakad reserv.
+  ⚠️ Reserven innehåller **bara Örebro-polygoner med äldre namn** — den får aldrig
+  användas för en annan station, då hamnar alla gator i `'Övrigt'` utan förklaring
 - **Tilldelning:** `assignAreas(allCoords)` samplar upp till 9 punkter längs gatan,
-  kör ray casting (`pointInPolygon`) mot alla polygoner, kräver träff i ≥ 30 % av punkterna
+  kör ray casting (`pointInPolygon`) mot ringarna från `outerRings()`, kräver träff
+  i ≥ 30 % av punkterna. En feature räknas högst en gång per samplad punkt
+- **Geometrityper:** `outerRings()` stödjer Polygon och MultiPolygon. Point och andra
+  typer ger `[]` och ignoreras — de kan inte avgränsa ett område. Viktigt eftersom
+  ritverktyg lätt producerar MultiPolygon, och geojson.io kan lämna kvar klick-punkter
 - En gata kan tillhöra **flera** områden (threshold-logik, inte first-match)
-- Gator utanför alla polygoner → `'Övrigt'`
+- Gator utanför alla polygoner → `'Övrigt'` (ca 4 % för Örebro)
+- ⚠️ **bbox och polygoner är frikopplade.** Mosås-polygonen (lat 59.182–59.211) ligger
+  till stor del utanför Örebros Overpass-bbox (som börjar på 59.20) — dess gator kommer
+  in först när Kumla är vald. Kontrollera alltid att en stations bbox täcker dess polygoner
 - **Redigera:** ändra `areas.geojson` → klicka **"Ladda om 🔄"** på områdespskärmen
   → `reloadAreas()` omtilldelar alla gator utan att ladda om sidan
 - **Visualisera:** klicka **"Visa omr."** i sub-bar → orange polygonöverlägg med etiketter
@@ -144,25 +241,43 @@ S.hidden  = {color:'transparent', weight:0, opacity:0}
   pct       int      avrundad procent rätt
   elapsed   int      sekunder
   timestamp Timestamp  serverTimestamp
+  org       string   'nerikes'        – organisationens id
+  station   string   'orebro'         – stationens id
+  scope     string   'nerikes/orebro' – org+'/'+station, det ENDA som filtreras på
   ```
-- **Firestore-regler** (sätt i Firebase Console → Firestore → Rules):
-  ```
-  rules_version = '2';
-  service cloud.firestore {
-    match /databases/{database}/documents {
-      match /results/{docId} {
-        allow read: if true;
-        allow create: if request.resource.data.keys().hasAll([
-            'name','areas','areasKey','correct','wrong','skipped',
-            'total','pct','elapsed','timestamp'])
-          && request.resource.data.name is string
-          && request.resource.data.name.size() <= 30
-          && request.resource.data.pct is int;
-        allow update, delete: if false;
-      }
-    }
-  }
-  ```
+
+- **Topplistan är avgränsad per station** via `scope`. `aktivtScope()` bygger strängen
+  på ett ställe; både `loadAreaTab()` och `loadKomboTab()` frågar
+  `.where('scope','==',aktivtScope()).limit(1000)`.
+
+  ⚠️ **Filtrera aldrig på `org` och `station` som två villkor** — två likheter i samma
+  fråga kräver ett sammansatt index som måste skapas manuellt i konsolen för varje
+  Firebase-projekt. Ett enda `scope`-fält kräver inget index. `scope` är dessutom
+  kollisionssäkert när två organisationer har varsin station med samma id.
+
+  Av samma skäl filtreras **området i JS** i `loadAreaTab()` i stället för med
+  `array-contains` — likhet + `array-contains` hade också krävt sammansatt index.
+
+  ⚠️ **`limit(1000)` utan `orderBy`** ger godtyckliga 1 000 dokument om en station
+  passerar den gränsen; `lbSort()` sorterar först därefter. Med dagens datamängd är
+  det i praktiken "allt". Passerar en station 1 000 resultat behövs
+  `orderBy('pct','desc')` plus ett sammansatt index.
+
+- **Resultat före augusti 2026 saknar `scope`** och syns därför inte längre i
+  topplistan. Det var testdata och beslutet att låta dem falla bort var medvetet —
+  de ligger kvar i databasen men filtreras bort.
+- **Firestore-regler** ligger i **`firestore.rules`** i repot. Filen tillämpas **inte**
+  automatiskt — projektet använder inte Firebase CLI. Klistra in innehållet i
+  Firebase Console → Firestore → Rules och tryck Publicera. Filen finns i repot för att
+  reglerna ska versionshanteras tillsammans med koden som skriver dokumenten.
+
+  Reglerna kräver `org`, `station` och `scope`, och kontrollerar att
+  `scope == org + '/' + station` — annars kan ett resultat stämplas in i en annan
+  stations topplista. `read` är öppen, `update`/`delete` är blockerade.
+
+  ⚠️ Gamla regler använder `hasAll`, som tillåter **extra** fält. Nya dokument skrivs
+  därför igenom även innan de nya reglerna publicerats — publicering behövs för att
+  *kräva* fälten, inte för att appen ska fungera.
 
 ---
 
@@ -170,10 +285,21 @@ S.hidden  = {color:'transparent', weight:0, opacity:0}
 
 - **Repo:** `https://github.com/Borgande/Gatuquiz-Nerikes-brandk-r`
 - **GitHub Pages:** `https://borgande.github.io/Gatuquiz-Nerikes-brandk-r/`
-- **Pusha:** kör `pusha.bat` (lägger till `index.html` + `areas.geojson`, committar, pushar `main`)
-  — OBS: `CLAUDE.md` ingår **inte** i pusha.bat; committa den manuellt vid behov
-- **Lokalt:** använd Firefox på dator för live Overpass-data (`file://` + CORS).
-  Chrome/mobil kör automatiskt på reservdata.
+- **Pusha:** kör `pusha.bat`. Använder `git add -A` och listar vad som pushas.
+  Tidigare lade den bara till `index.html` + `areas.geojson`, vilket gjorde att nya
+  filer tyst aldrig nådde GitHub Pages — ändrat 2026-08-20.
+- **Lokalt:** dubbelklicka **`serva.bat`** — startar `py -m http.server 8000` och
+  öppnar webbläsaren. Stäng fönstret för att stoppa servern.
+
+- ⚠️ **Får du bara reservdata lokalt?** Då har `index.html` öppnats direkt från disk.
+  Appen läser `tenants.json`, `areas.geojson` och `data/*.streets.json` via XHR, och
+  från `file://` är sidans origin `null` — webbläsaren blockerar alla tre med CORS,
+  varpå boot faller tillbaka på `FALLBACK_STREETS` (121 gator i stället för 1 266).
+  Kör via `serva.bat`. **`file://` stöds inte längre** — det är ett medvetet val, inte
+  ett fel. GitHub Pages påverkas inte, det är en riktig webbserver.
+
+- Kontroll att det blev rätt: badgen ska visa `● Örebro (1266 gator)`,
+  inte `⚠ Reservdata`.
 
 ---
 
@@ -182,8 +308,21 @@ S.hidden  = {color:'transparent', weight:0, opacity:0}
 | Funktion | Ansvar |
 |---|---|
 | `xhrGet(url)` | XHR-wrapper → Promise (15 s timeout) |
-| `fetchLive()` | `Promise.any` mot 3 Overpass-speglar |
-| `loadAreasGeo()` | Hämtar `areas.geojson`, uppdaterar `AREAS_GEO` |
+| `loadTenants()` | Läser `tenants.json`; `TENANTS_FALLBACK` vid fel |
+| `resolveStation()` | URL → localStorage → `defaultStation` → första stationen |
+| `applyStation(org,st)` | Sätter `ORG`/`STATION`, titel, rubrik, kartvy, `activeSources` |
+| `loadSource(id)` | Förgenererad `streetsUrl` först, Overpass som reserv |
+| `fetchFromOverpass(cfg)` | `Promise.any` mot 3 speglar — används bara som reserv |
+| `srcCfg(id)` | Slår upp en datakälla i `STATION.sources` |
+| `buildStationBar()` | Renderar `#station-bar`; döljs om det bara finns en station |
+| `switchStation(org,st)` | Byter station via omladdning med `?org=&station=` |
+| `buildSourceBar()` | Renderar `#muni-bar`; döljs om stationen har en enda källa |
+| `updateDataBadge()` | Uppdaterar badgen med stationsnamn och gatuantal |
+| `getStation(area)` | Vilken station ett område tillhör (`properties.station`) |
+| `getSource(area)` | Vilken datakälla ett område tillhör (`properties.source`) |
+| `areaProp(area,key,fb)` | Gemensam uppslagning i `AREAS_GEO.features` |
+| `outerRings(geom)` | Yttre ringar för Polygon/MultiPolygon; `[]` för Point m.fl. |
+| `loadAreasGeo()` | Läser `STATION.areasUrl`, filtrerar på station, uppdaterar `AREAS_GEO` |
 | `pointInPolygon(lat,lon,ring)` | Ray casting (GeoJSON [lon,lat]-ordning) |
 | `assignAreas(allCoords)` | Tilldelar gata till 0..N områden via sampling + threshold |
 | `addStreet(name, segList)` | Skapar Leaflet hit-target + synlig polyline, tilldelar områden |
@@ -206,6 +345,7 @@ S.hidden  = {color:'transparent', weight:0, opacity:0}
 | `lbEsc(s)` / `lbFmtTime(s)` / `lbFmtDate(ts)` | HTML-escape, tid, datum |
 | `toggleSatellite()` | Byter `tileMap` ↔ `tileSat` |
 | `toggleAreasOverlay()` | Visar/döljer orange polygonöverlägg med etiketter |
+| `toggleSource(id)` | Väljer/avväljer datakälla (`activeSources`), lazy-laddar gatudata |
 | `reloadAreas(btn)` | Laddar om `areas.geojson` + omtilldelar alla gator |
 | `doSkip()` | Hoppar över fråga, visar gatan grön (S.reveal) |
 | `goArea()` | Stänger topplista, visar area-screen |

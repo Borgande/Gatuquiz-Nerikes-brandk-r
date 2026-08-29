@@ -133,13 +133,15 @@ const firebaseConfig = {
     .area-lbl{background:rgba(255,100,0,0.88);color:#fff;border:none;border-radius:4px;font-size:.72rem;font-weight:700;white-space:nowrap;padding:2px 7px;box-shadow:none;}
     .area-lbl::before{display:none}
 
-    /* ── Kommunväljare ─────────────────────────────── */
-    #muni-bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+    /* ── Stations- och ortsväljare ──────────────────── */
+    #muni-bar,#station-bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+    .station-btn{display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.25}
+    .station-sub{font-size:.67rem;font-weight:600;opacity:.6;letter-spacing:.2px}
     .muni-btn{background:transparent;border:2px solid #2a2a2a;color:#555;border-radius:10px;padding:8px 18px;cursor:pointer;font-size:.88rem;font-weight:700;min-height:44px;transition:all .2s}
     .muni-btn:hover{border-color:#ff6400;color:#ccc}
     .muni-btn.active{background:rgba(255,100,0,0.15);border-color:#ff6400;color:#ff6400}
     .muni-btn:disabled{opacity:.55;cursor:wait}
-    .muni-lbl{font-size:.76rem;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:.5px;width:100%;max-width:580px;text-align:left;padding:0 2px}
+    .muni-lbl,.station-lbl{font-size:.76rem;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:.5px;width:100%;max-width:580px;text-align:left;padding:0 2px}
 
     /* ── Leaderboard ────────────────────────────────── */
     .lb-table{width:100%;border-collapse:collapse;font-size:.85rem}
@@ -186,11 +188,13 @@ const firebaseConfig = {
     <button class="sel-btn" onclick="selNone()">Avmarkera alla</button>
     <button class="sel-btn" onclick="reloadAreas(this)">Ladda om 🔄</button>
   </div>
-  <p class="muni-lbl">Välj kommuner:</p>
+  <p class="station-lbl">Välj station:</p>
+  <div id="station-bar">
+    <!-- knappar renderas av buildStationBar() utifrån tenants.json -->
+  </div>
+  <p class="muni-lbl">Välj orter:</p>
   <div id="muni-bar">
-    <button id="muni-btn-orebro"    class="muni-btn active" onclick="toggleMunicipality('orebro')">Örebro</button>
-    <button id="muni-btn-kumla"     class="muni-btn"        onclick="toggleMunicipality('kumla')">Kumla</button>
-    <button id="muni-btn-hallsberg" class="muni-btn"        onclick="toggleMunicipality('hallsberg')">Hallsberg</button>
+    <!-- knappar renderas av buildSourceBar() utifrån stationens datakällor -->
   </div>
   <div id="area-grid"></div>
   <p id="sel-info">Inga områden valda</p>
@@ -248,7 +252,8 @@ const firebaseConfig = {
 <!-- LEADERBOARD OVERLAY -->
 <div id="lb-overlay" style="display:none;position:fixed;inset:0;background:#0d0d0d;z-index:9000;flex-direction:column;overflow:hidden">
   <div style="background:#111;border-bottom:2px solid #ff6400;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
-    <span style="color:#ff6400;font-size:1.1rem;font-weight:800">🏆 Topplista</span>
+    <span style="color:#ff6400;font-size:1.1rem;font-weight:800">🏆 Topplista<span
+      id="lb-station" style="color:#666;font-size:.82rem;font-weight:600;margin-left:8px"></span></span>
     <button onclick="closeLeaderboard()" style="background:transparent;border:1px solid #444;color:#888;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:.88rem">Stäng ✕</button>
   </div>
   <div style="display:flex;border-bottom:1px solid #222;flex-shrink:0;background:#111">
@@ -468,15 +473,70 @@ const MIRRORS=[
 ];
  
 // ═══════════════════════════════════════════════════
-//  KOMMUNKONFIGURATION
+//  TENANTS – organisationer och stationer (tenants.json)
 // ═══════════════════════════════════════════════════
-const MUNICIPALITY_CONFIG={
-  orebro:    {label:'Örebro',    bbox:'(59.20,15.08,59.37,15.40)'},
-  kumla:     {label:'Kumla',     bbox:'(59.06,15.05,59.20,15.35)'},
-  hallsberg: {label:'Hallsberg', bbox:'(58.97,14.87,59.14,15.22)'},
-};
-let activeMunicipalities=new Set(['orebro']);
-let loadedMunicipalities=new Set();
+// En station är den enhet som har egen karta, egna områden och egen topplista.
+// En station kan ha flera datakällor (t.ex. Byrsta = Kumla + Hallsberg), och
+// varje källa har en egen bbox och en egen förgenererad gatufil.
+let TENANTS=null, ORG=null, STATION=null;
+let activeSources=new Set();
+let loadedSources=new Set();
+
+// Nödkonfiguration om tenants.json inte går att läsa – motsvarar dagens Örebro.
+const TENANTS_FALLBACK={version:1,defaultStation:'nerikes/orebro',orgs:[{
+  id:'nerikes',label:'Nerikes Brandkår',stations:[{
+    id:'orebro',label:'Örebro',title:'Gatuprov Örebro',
+    center:[59.274,15.210],zoom:13,areasUrl:'areas.geojson',
+    defaultSources:['orebro'],
+    sources:[{id:'orebro',label:'Örebro',bbox:'(59.20,15.08,59.37,15.40)',
+              streetsUrl:'data/nerikes-orebro.streets.json'}]}]}]};
+
+function srcCfg(id){
+  var list=(STATION&&STATION.sources)||[];
+  for(var i=0;i<list.length;i++){if(list[i].id===id) return list[i];}
+  return null;
+}
+
+async function loadTenants(){
+  try{
+    TENANTS=await xhrGet('tenants.json?t='+Date.now());
+    if(!TENANTS||!TENANTS.orgs||!TENANTS.orgs.length) throw new Error('tom fil');
+  }catch(e){
+    console.warn('tenants.json kunde inte läsas – kör i standardläge:',e.message);
+    TENANTS=TENANTS_FALLBACK;
+  }
+}
+
+// Prioritet: ?org=&station= → localStorage → defaultStation → första stationen.
+function resolveStation(){
+  var p=new URLSearchParams(location.search);
+  var want=[
+    [p.get('org'),p.get('station')],
+    [localStorage.getItem('gq_org'),localStorage.getItem('gq_station')],
+    (TENANTS.defaultStation||'').split('/')
+  ];
+  for(var i=0;i<want.length;i++){
+    var o=want[i][0],s=want[i][1];
+    if(!o||!s) continue;
+    var org=TENANTS.orgs.filter(function(x){return x.id===o;})[0];
+    if(!org) continue;
+    var st=org.stations.filter(function(x){return x.id===s;})[0];
+    if(st) return {org:org,station:st};
+  }
+  return {org:TENANTS.orgs[0],station:TENANTS.orgs[0].stations[0]};
+}
+
+function applyStation(org,station){
+  ORG=org; STATION=station;
+  localStorage.setItem('gq_org',org.id);
+  localStorage.setItem('gq_station',station.id);
+  var titel=station.title||('Gatuprov '+station.label);
+  document.title=titel;
+  var h1=document.querySelector('#loading-screen h1');
+  if(h1) h1.textContent=titel;
+  if(station.center) map.setView(station.center,station.zoom||13);
+  activeSources=new Set(station.defaultSources||station.sources.map(function(s){return s.id;}));
+}
 
 function xhrGet(url){
   return new Promise(function(resolve,reject){
@@ -495,27 +555,68 @@ function xhrGet(url){
   });
 }
  
-async function fetchMunicipality(id){
-  var cfg=MUNICIPALITY_CONFIG[id];
+// Overpass används bara om den förgenererade filen saknas. Speglarna svarar
+// ofta 429/504, och ett live-anrop kostar ~15 s vid varje sidladdning.
+async function fetchFromOverpass(cfg){
   var q='[out:json][timeout:60];way["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|service|living_street|road)$"]["name"]'+cfg.bbox+';out body geom;';
-  document.getElementById('load-status').textContent='Hämtar '+cfg.label+'…';
-  return Promise.any(MIRRORS.map(function(url){
+  document.getElementById('load-status').textContent='Hämtar '+cfg.label+' från Overpass…';
+  var data=await Promise.any(MIRRORS.map(function(url){
     return xhrGet(url+'?data='+encodeURIComponent(q));
   }));
+  buildFromOSM(data);
 }
- 
-// ═══════════════════════════════════════════════════
-//  LOAD AREAS FROM areas.geojson (om möjligt)
-// ═══════════════════════════════════════════════════
-async function loadAreasGeo(){
-  try{
-    var data=await xhrGet('areas.geojson');
-    if(data&&data.features&&data.features.length>0){
-      AREAS_GEO=data;
-      console.log('areas.geojson laddad: '+data.features.length+' områden');
+
+// Laddar en datakälla: förgenererad fil först, Overpass som reserv.
+async function loadSource(id){
+  var cfg=srcCfg(id);
+  if(!cfg) throw new Error('Okänd datakälla: '+id);
+  if(cfg.streetsUrl){
+    try{
+      document.getElementById('load-status').textContent='Laddar '+cfg.label+'…';
+      var pre=await xhrGet(cfg.streetsUrl);
+      if(pre&&pre.streets){
+        var names=Object.keys(pre.streets);
+        names.forEach(function(n){addStreet(n,pre.streets[n]);});
+        console.log(cfg.label+': '+names.length+' gator från '+cfg.streetsUrl+
+                    ' (genererad '+(pre.generated||'okänt datum')+')');
+        return;
+      }
+      throw new Error('Filen saknar streets');
+    }catch(e){
+      console.warn('Förgenererad data saknas för '+cfg.label+' ('+e.message+') – provar Overpass');
     }
+  }
+  await fetchFromOverpass(cfg);
+}
+
+// ═══════════════════════════════════════════════════
+//  LOAD AREAS – stationens områdesfil
+// ═══════════════════════════════════════════════════
+// Filtrerar på station så att en delad områdesfil kan användas av flera
+// stationer utan att deras områden blandas.
+async function loadAreasGeo(){
+  var url=(STATION&&STATION.areasUrl)||'areas.geojson';
+  var stId=STATION&&STATION.id;
+  try{
+    var data=await xhrGet(url+'?t='+Date.now());
+    if(!data||!data.features||!data.features.length) throw new Error('Tom områdesfil');
+    var feats=data.features.filter(function(f){
+      if(outerRings(f.geometry).length===0) return false;
+      var s=f.properties&&f.properties.station;
+      return !s||!stId||s===stId;
+    });
+    if(!feats.length) throw new Error('Inga områden för station '+stId);
+    AREAS_GEO={type:'FeatureCollection',features:feats};
+    console.log(url+' laddad: '+feats.length+' områden för '+stId);
   }catch(e){
-    console.warn('areas.geojson kunde inte laddas – använder inbyggd data:',e.message);
+    // Den inbyggda reserven innehåller BARA Örebro-polygoner. Att använda den
+    // för en annan station skulle lägga alla gator i 'Övrigt' utan förklaring.
+    if(stId&&stId!=='orebro'){
+      AREAS_GEO={type:'FeatureCollection',features:[]};
+      console.error('Områdesdata saknas för '+stId+':',e.message);
+    }else{
+      console.warn('areas.geojson kunde inte laddas – använder inbyggd data:',e.message);
+    }
   }
 }
 
@@ -531,6 +632,14 @@ function pointInPolygon(lat,lon,ring){
   }
   return inside;
 }
+// Yttre ringar för Polygon/MultiPolygon. Andra geometrityper (t.ex. Point)
+// kan inte avgränsa ett område och ger [] i stället för att tolkas som ring.
+function outerRings(geom){
+  if(!geom) return [];
+  if(geom.type==='Polygon') return [geom.coordinates[0]];
+  if(geom.type==='MultiPolygon') return geom.coordinates.map(function(p){return p[0];});
+  return [];
+}
 function assignAreas(allCoords){
   if(!allCoords.length) return ['Övrigt'];
   var N=Math.min(allCoords.length,9);
@@ -540,9 +649,13 @@ function assignAreas(allCoords){
     var lat=allCoords[idx][0],lon=allCoords[idx][1];
     for(var i=0;i<AREAS_GEO.features.length;i++){
       var f=AREAS_GEO.features[i];
-      if(pointInPolygon(lat,lon,f.geometry.coordinates[0])){
-        var a=f.properties['Område'];
-        counts[a]=(counts[a]||0)+1;
+      var rings=outerRings(f.geometry);
+      for(var r=0;r<rings.length;r++){
+        if(pointInPolygon(lat,lon,rings[r])){
+          var a=f.properties['Område'];
+          counts[a]=(counts[a]||0)+1;
+          break; // räkna varje feature högst en gång per samplad punkt
+        }
       }
     }
   }
@@ -589,46 +702,54 @@ function buildFromFallback(){
 }
  
 // ═══════════════════════════════════════════════════
-//  KOMMUNHJÄLPFUNKTIONER
+//  STATIONSHJÄLPFUNKTIONER
 // ═══════════════════════════════════════════════════
-function getKommun(areaName){
+function getStation(areaName){
+  return areaProp(areaName,'station','orebro');
+}
+
+// Vilken datakälla ett område hör till. En station kan ha flera källor
+// (Byrsta = Kumla + Hallsberg), så källa och station är skilda begrepp.
+function getSource(areaName){
+  var first=(STATION&&STATION.sources&&STATION.sources[0]&&STATION.sources[0].id)||'orebro';
+  return areaProp(areaName,'source',first);
+}
+
+function areaProp(areaName,key,fallback){
   for(var i=0;i<AREAS_GEO.features.length;i++){
     var f=AREAS_GEO.features[i];
     if(f.properties&&f.properties['Område']===areaName)
-      return (f.properties['kommun']||'orebro');
+      return (f.properties[key]||fallback);
   }
-  return 'orebro';
+  return fallback;
 }
 
-async function toggleMunicipality(id){
+async function toggleSource(id){
   var btn=document.getElementById('muni-btn-'+id);
-  if(activeMunicipalities.has(id)){
-    if(activeMunicipalities.size===1) return; // behåll alltid minst en
-    activeMunicipalities.delete(id);
+  if(activeSources.has(id)){
+    if(activeSources.size===1) return; // behåll alltid minst en
+    activeSources.delete(id);
     Object.keys(areaStreets).forEach(function(a){
-      if(getKommun(a)===id){selectedAreas.delete(a);}
+      if(getSource(a)===id){selectedAreas.delete(a);}
     });
     if(btn) btn.classList.remove('active');
     buildAreaGrid();
     updateSelInfo();
   } else {
-    activeMunicipalities.add(id);
+    activeSources.add(id);
     if(btn) btn.classList.add('active');
-    if(!loadedMunicipalities.has(id)){
+    if(!loadedSources.has(id)){
       if(btn) btn.disabled=true;
       try{
-        var data=await fetchMunicipality(id);
-        buildFromOSM(data);
-        loadedMunicipalities.add(id);
+        await loadSource(id);
+        loadedSources.add(id);
         document.getElementById('load-status').textContent='';
-        // Uppdatera gatantal i live-badge
-        var badge=document.getElementById('data-source-badge');
-        if(badge.className==='badge-live')
-          badge.textContent='● Live-data ('+Object.keys(allStreets).length+' gator)';
+        updateDataBadge();
       }catch(e){
-        console.warn('Kunde inte hämta '+MUNICIPALITY_CONFIG[id].label+':',e);
-        activeMunicipalities.delete(id);
-        if(btn){btn.classList.remove('active');btn.textContent=MUNICIPALITY_CONFIG[id].label+' – offline';}
+        console.warn('Kunde inte hämta '+id+':',e);
+        activeSources.delete(id);
+        var cfg=srcCfg(id);
+        if(btn){btn.classList.remove('active');btn.textContent=(cfg?cfg.label:id)+' – offline';}
       }finally{
         if(btn) btn.disabled=false;
       }
@@ -638,24 +759,102 @@ async function toggleMunicipality(id){
   }
 }
 
+function updateDataBadge(){
+  var badge=document.getElementById('data-source-badge');
+  if(!badge) return;
+  var n=Object.keys(allStreets).length;
+  if(dataSource==='fallback'){
+    badge.textContent='⚠ Reservdata (begränsad, ~'+n+' gator)';
+    badge.className='badge-fallback';
+  }else{
+    badge.textContent='● '+(STATION?STATION.label:'')+' ('+n+' gator)';
+    badge.className='badge-live';
+  }
+}
+
+// Renderar källknapparna för aktuell station. Enda källa → ingen rad alls.
+function buildStationBar(){
+  var bar=document.getElementById('station-bar');
+  var lbl=document.querySelector('.station-lbl');
+  if(!bar) return;
+  var orgs=(TENANTS&&TENANTS.orgs)||[];
+  var rader=[];
+  orgs.forEach(function(o){
+    (o.stations||[]).forEach(function(st){rader.push({org:o,st:st});});
+  });
+  bar.innerHTML='';
+  var ensam=rader.length<2;
+  bar.style.display=ensam?'none':'flex';
+  if(lbl) lbl.style.display=ensam?'none':'';
+  if(ensam) return;
+  var flera=orgs.length>1;
+  rader.forEach(function(r){
+    var b=document.createElement('button');
+    b.className='muni-btn station-btn'+(STATION&&r.st.id===STATION.id?' active':'');
+    b.appendChild(document.createTextNode(
+      flera?(r.org.label+' – '+r.st.label):r.st.label));
+    // Orterna under namnet – annars går det inte att gissa att t.ex.
+    // Kumla ligger under Byrsta.
+    var orter=(r.st.sources||[]).map(function(x){return x.label;}).join(' · ');
+    if(orter&&orter!==r.st.label){
+      var undr=document.createElement('span');
+      undr.className='station-sub';
+      undr.textContent=orter;
+      b.appendChild(undr);
+    }
+    b.onclick=function(){switchStation(r.org.id,r.st.id);};
+    bar.appendChild(b);
+  });
+}
+
+// Byter station via omladdning. applyStation() rensar inte allStreets,
+// areaStreets, selectedAreas eller kartlagren – omladdning återanvänder
+// hela boot-vägen i stället för att riva staten för hand.
+function switchStation(orgId,stationId){
+  if(STATION&&stationId===STATION.id&&ORG&&orgId===ORG.id) return;
+  localStorage.setItem('gq_org',orgId);
+  localStorage.setItem('gq_station',stationId);
+  location.search='?org='+encodeURIComponent(orgId)+'&station='+encodeURIComponent(stationId);
+}
+
+function buildSourceBar(){
+  var bar=document.getElementById('muni-bar');
+  var lbl=document.querySelector('.muni-lbl');
+  if(!bar) return;
+  var sources=(STATION&&STATION.sources)||[];
+  bar.innerHTML='';
+  var ensam=sources.length<2;
+  bar.style.display=ensam?'none':'flex';
+  if(lbl) lbl.style.display=ensam?'none':'';
+  if(ensam) return;
+  sources.forEach(function(s){
+    var b=document.createElement('button');
+    b.id='muni-btn-'+s.id;
+    b.className='muni-btn'+(activeSources.has(s.id)?' active':'');
+    b.textContent=s.label;
+    b.onclick=function(){toggleSource(s.id);};
+    bar.appendChild(b);
+  });
+}
+
 // ═══════════════════════════════════════════════════
 //  AREA SCREEN
 // ═══════════════════════════════════════════════════
 function buildAreaGrid(){
   var grid=document.getElementById('area-grid');
   grid.innerHTML='';
-  var munIds=['orebro','kumla','hallsberg'];
-  var showHeaders=(activeMunicipalities.size>1);
-  munIds.forEach(function(munId){
-    if(!activeMunicipalities.has(munId)) return;
+  var sources=(STATION&&STATION.sources)||[];
+  var showHeaders=(activeSources.size>1);
+  sources.forEach(function(src){
+    if(!activeSources.has(src.id)) return;
     var aNames=Object.keys(areaStreets).filter(function(a){
-      return getKommun(a)===munId&&(areaStreets[a]||[]).length>0;
+      return getSource(a)===src.id&&(areaStreets[a]||[]).length>0;
     }).sort();
     if(aNames.length===0) return;
     if(showHeaders){
       var hdr=document.createElement('div');
       hdr.style.cssText='grid-column:1/-1;color:#ff6400;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;padding:8px 2px 4px;border-bottom:1px solid rgba(255,100,0,0.2);margin-top:4px';
-      hdr.textContent=MUNICIPALITY_CONFIG[munId].label;
+      hdr.textContent=src.label;
       grid.appendChild(hdr);
     }
     aNames.forEach(function(aname){
@@ -677,7 +876,7 @@ function buildAreaGrid(){
 function selAll(){
   Object.keys(areaStreets).forEach(function(a){
     if((areaStreets[a]||[]).length===0) return;
-    if(!activeMunicipalities.has(getKommun(a))) return;
+    if(!activeSources.has(getSource(a))) return;
     selectedAreas.add(a);
     var b=document.querySelector('[data-a="'+a+'"]');
     if(b) b.classList.add('selected');
@@ -809,6 +1008,7 @@ function toggleAreasOverlay(){
     return;
   }
   areasLayer=L.geoJSON(AREAS_GEO,{
+    filter:function(f){return outerRings(f.geometry).length>0;}, // inga lösa markörer från punkt-features
     style:{color:'#ff6400',weight:2,opacity:0.8,fillColor:'#ff6400',fillOpacity:0.07},
     onEachFeature:function(f,layer){
       var name=f.properties['Område']||f.properties['name']||'?';
@@ -938,10 +1138,9 @@ function loadFallback(){
   document.getElementById('load-status').textContent='';
   document.getElementById('spinner').style.display='none';
   document.getElementById('loading-screen').style.display='none';
-  // update badge
-  var badge=document.getElementById('data-source-badge');
-  badge.textContent='⚠ Reservdata (begränsad, ~'+Object.keys(allStreets).length+' gator)';
-  badge.className='badge-fallback';
+  updateDataBadge();
+  buildStationBar();
+  buildSourceBar();
   buildAreaGrid();
   goArea();
 }
@@ -949,20 +1148,33 @@ function loadFallback(){
 // ═══════════════════════════════════════════════════
 //  BOOT
 // ═══════════════════════════════════════════════════
-loadAreasGeo().then(function(){fetchMunicipality('orebro').then(function(data){
-  buildFromOSM(data);
-  loadedMunicipalities.add('orebro');
-  dataSource='live';
-  document.getElementById('loading-screen').style.display='none';
-  var badge=document.getElementById('data-source-badge');
-  badge.textContent='● Live-data ('+Object.keys(allStreets).length+' gator)';
-  badge.className='badge-live';
-  buildAreaGrid();
-  goArea();
-}).catch(function(err){
-  console.warn('Live fetch failed, using fallback:',err);
-  loadFallback();
-});});
+(async function boot(){
+  try{
+    await loadTenants();
+    var vald=resolveStation();
+    applyStation(vald.org,vald.station);
+    await loadAreasGeo();
+
+    // Ladda stationens förvalda källor parallellt.
+    var ids=Array.from(activeSources);
+    var utfall=await Promise.all(ids.map(function(id){
+      return loadSource(id).then(function(){loadedSources.add(id);return true;})
+                           .catch(function(e){console.warn(id+':',e.message);return false;});
+    }));
+    if(utfall.indexOf(true)<0) throw new Error('ingen datakälla kunde laddas');
+
+    dataSource='live';
+    document.getElementById('loading-screen').style.display='none';
+    updateDataBadge();
+    buildStationBar();
+    buildSourceBar();
+    buildAreaGrid();
+    goArea();
+  }catch(err){
+    console.warn('Start misslyckades, använder reservdata:',err);
+    loadFallback();
+  }
+})();
 
 // ═══════════════════════════════════════════════════
 //  NAMN – localStorage
@@ -977,12 +1189,22 @@ document.addEventListener('DOMContentLoaded',function(){
 // ═══════════════════════════════════════════════════
 //  SPARA RESULTAT TILL FIRESTORE
 // ═══════════════════════════════════════════════════
+// Ett enda falt att filtrera pa – tva likhetsvillkor (org OCH station) hade
+// krävt ett sammansatt index i Firestore. 'nerikes/orebro' krockar inte heller
+// om tva organisationer har varsin station med samma id.
+function aktivtScope(){
+  return (ORG?ORG.id:'?')+'/'+(STATION?STATION.id:'?');
+}
+
 function saveResult(pct,elapsed,total){
   if(!db) return;
   var name=((document.getElementById('player-name')||{}).value||'').trim()||'Anonym';
   var areasArr=Array.from(selectedAreas).sort();
   db.collection('results').add({
     name:name,
+    org:ORG?ORG.id:'',
+    station:STATION?STATION.id:'',
+    scope:aktivtScope(),
     areas:areasArr,
     areasKey:areasArr.join(' + ')||'Okänt',
     correct:score.correct,
@@ -1004,6 +1226,10 @@ function openLeaderboard(){
   var ov=document.getElementById('lb-overlay');
   ov.style.display='flex';
   ov.style.flexDirection='column';
+  // Utan stationsnamn gar det inte att forsta varfor listan ser annorlunda
+  // ut efter ett stationsbyte.
+  var st=document.getElementById('lb-station');
+  if(st) st.textContent=STATION?('– '+STATION.label):'';
   var sel=document.getElementById('lb-area-select');
   sel.innerHTML='<option value="">– välj –</option>';
   Object.keys(areaStreets).sort().forEach(function(a){
@@ -1064,8 +1290,17 @@ function loadAreaTab(){
   if(!db){cont.innerHTML='<div class="lb-msg">Firebase ej konfigurerat.</div>';return;}
   if(!area){cont.innerHTML='<div class="lb-msg">Välj ett område ovan.</div>';return;}
   cont.innerHTML='<div class="lb-msg">Laddar…</div>';
-  db.collection('results').where('areas','array-contains',area).get()
-    .then(function(snap){var r=[];snap.forEach(function(d){r.push(d.data());});lbRenderTable(r,cont);})
+  // Omradet filtreras i JS: likhet + array-contains i samma fraga hade krävt
+  // ett sammansatt index, och mangden ar redan avgransad till stationen.
+  db.collection('results').where('scope','==',aktivtScope()).limit(1000).get()
+    .then(function(snap){
+      var r=[];
+      snap.forEach(function(d){
+        var x=d.data();
+        if((x.areas||[]).indexOf(area)>=0) r.push(x);
+      });
+      lbRenderTable(r,cont);
+    })
     .catch(function(e){cont.innerHTML='<div class="lb-msg">Fel: '+lbEsc(e.message)+'</div>';});
 }
 
@@ -1073,7 +1308,7 @@ function loadKomboTab(){
   var cont=document.getElementById('lb-kombo-content');
   if(!db){cont.innerHTML='<div class="lb-msg">Firebase ej konfigurerat.</div>';return;}
   cont.innerHTML='<div class="lb-msg">Laddar…</div>';
-  db.collection('results').get().then(function(snap){
+  db.collection('results').where('scope','==',aktivtScope()).limit(1000).get().then(function(snap){
     var groups={};
     snap.forEach(function(doc){
       var d=doc.data(); var k=d.areasKey||'Okänt';

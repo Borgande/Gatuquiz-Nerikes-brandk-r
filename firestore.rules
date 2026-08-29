@@ -1,0 +1,34 @@
+// Firestore-regler för gatuprov-orebro.
+//
+// OBS: den här filen tillämpas INTE automatiskt. Projektet använder inte
+// Firebase CLI. Klistra in innehållet i Firebase Console → Firestore → Rules
+// och tryck Publicera. Filen ligger i repot för att reglerna ska
+// versionshanteras tillsammans med koden som skriver dokumenten.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /results/{docId} {
+
+      // Topplistan är öppen att läsa – appen har ingen inloggning.
+      allow read: if true;
+
+      // Resultat får skapas men aldrig ändras eller raderas.
+      allow create: if request.resource.data.keys().hasAll([
+            'name','areas','areasKey','correct','wrong','skipped',
+            'total','pct','elapsed','timestamp','org','station','scope'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 30
+        && request.resource.data.pct is int
+        && request.resource.data.org is string
+        && request.resource.data.station is string
+        && request.resource.data.scope is string
+        // Hindrar att ett resultat stämplas med ett scope som inte hör ihop
+        // med org/station, dvs. skrivs in i en annan stations topplista.
+        && request.resource.data.scope ==
+             request.resource.data.org + '/' + request.resource.data.station;
+
+      allow update, delete: if false;
+    }
+  }
+}

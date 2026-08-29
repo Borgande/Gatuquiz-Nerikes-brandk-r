@@ -38,7 +38,7 @@ const firebaseConfig = {
     #error-box{display:none;background:rgba(255,68,68,0.1);border:1px solid #ff4444;border-radius:12px;padding:16px;max-width:340px;font-size:.83rem;line-height:1.7;color:#ffaaaa}
     #use-fallback-btn{background:#ff6400;color:#fff;border:none;border-radius:8px;padding:10px 22px;font-size:.9rem;font-weight:700;cursor:pointer;margin-top:6px}
  
-    #area-screen{position:fixed;inset:0;background:#0d0d0d;z-index:8000;display:none;flex-direction:column;align-items:center;padding:20px 16px;overflow-y:auto;gap:10px}
+    #area-screen,#area-quiz-screen{position:fixed;inset:0;background:#0d0d0d;z-index:8000;display:none;flex-direction:column;align-items:center;padding:20px 16px;overflow-y:auto;gap:10px}
     #area-screen h2{color:#ff6400;font-size:1.3rem}
     #area-screen p{color:#888;font-size:.82rem}
     #data-source-badge{font-size:.72rem;padding:4px 12px;border-radius:20px;font-weight:600}
@@ -51,7 +51,7 @@ const firebaseConfig = {
     .area-btn .sc{display:block;font-size:.68rem;color:#555;font-weight:400;margin-top:2px}
     .area-btn.selected .sc{color:#ff6400;opacity:.7}
     #area-actions{display:flex;gap:10px}
-    .sel-btn{background:transparent;border:1px solid #333;color:#777;border-radius:7px;padding:5px 14px;cursor:pointer;font-size:.78rem}
+    .sel-btn{background:rgba(255,255,255,0.04);border:1px solid #3a3a3a;color:#aaa;border-radius:7px;padding:5px 14px;cursor:pointer;font-size:.78rem}
     .sel-btn:hover{border-color:#ff6400;color:#ff6400}
     #sel-info{color:#777;font-size:.8rem}
     #start-btn{background:#ff6400;color:#fff;border:none;border-radius:12px;padding:13px 38px;font-size:1rem;font-weight:700;cursor:pointer}
@@ -70,14 +70,14 @@ const firebaseConfig = {
     #sub-bar{background:#0d0d0d;border-bottom:1px solid rgba(255,100,0,0.12);padding:5px 14px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
     #instr{color:#777;font-size:.78rem}
     #qc{color:#444;font-size:.75rem;white-space:nowrap}
-    .sbtn{background:transparent;border:1px solid #2a2a2a;color:#555;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:.74rem;white-space:nowrap}
+    .sbtn{background:rgba(255,255,255,0.04);border:1px solid #3a3a3a;color:#999;border-radius:6px;padding:3px 9px;cursor:pointer;font-size:.74rem;white-space:nowrap}
     .sbtn:hover{border-color:#ff6400;color:#ff6400}
     #prog-wrap{height:3px;background:rgba(255,100,0,0.1);flex-shrink:0}
     #prog{height:100%;background:#ff6400;transition:width .4s}
     #map{flex:1;position:relative}
     #hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(255,100,0,0.9);color:#fff;padding:8px 20px;border-radius:24px;font-size:.84rem;font-weight:600;pointer-events:none;z-index:800;opacity:0;transition:opacity .2s}
     #hint.show{opacity:1}
-    #wrong-toast{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#ff6666;padding:5px 16px;border-radius:20px;font-size:.78rem;font-weight:600;pointer-events:none;z-index:800;opacity:0;transition:opacity .25s;white-space:nowrap}
+    #wrong-toast{position:absolute;bottom:18px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.75);color:#ff6666;padding:5px 16px;border-radius:20px;font-size:2.34rem;font-weight:600;pointer-events:none;z-index:800;opacity:0;transition:opacity .25s;white-space:nowrap}
     #wrong-toast.show{opacity:1}
     #end{position:fixed;inset:0;background:rgba(8,5,0,0.97);z-index:2000;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px}
     #end.show{display:flex}
@@ -133,15 +133,15 @@ const firebaseConfig = {
     .area-lbl{background:rgba(255,100,0,0.88);color:#fff;border:none;border-radius:4px;font-size:.72rem;font-weight:700;white-space:nowrap;padding:2px 7px;box-shadow:none;}
     .area-lbl::before{display:none}
 
-    /* ── Stations- och ortsväljare ──────────────────── */
-    #muni-bar,#station-bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+    /* ── Stations-, orts- och områdesväljare ────────── */
+    #muni-bar,#station-bar,#area-quiz-muni-bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
     .station-btn{display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.25}
     .station-sub{font-size:.67rem;font-weight:600;opacity:.6;letter-spacing:.2px}
-    .muni-btn{background:transparent;border:2px solid #2a2a2a;color:#555;border-radius:10px;padding:8px 18px;cursor:pointer;font-size:.88rem;font-weight:700;min-height:44px;transition:all .2s}
+    .muni-btn{background:rgba(255,255,255,0.04);border:2px solid #3a3a3a;color:#999;border-radius:10px;padding:8px 18px;cursor:pointer;font-size:.88rem;font-weight:700;min-height:44px;transition:all .2s}
     .muni-btn:hover{border-color:#ff6400;color:#ccc}
     .muni-btn.active{background:rgba(255,100,0,0.15);border-color:#ff6400;color:#ff6400}
     .muni-btn:disabled{opacity:.55;cursor:wait}
-    .muni-lbl,.station-lbl{font-size:.76rem;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:.5px;width:100%;max-width:580px;text-align:left;padding:0 2px}
+    .muni-lbl,.station-lbl,.aq-lbl{font-size:.76rem;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:.5px;width:100%;max-width:580px;text-align:left;padding:0 2px}
 
     /* ── Leaderboard ────────────────────────────────── */
     .lb-table{width:100%;border-collapse:collapse;font-size:.85rem}
@@ -200,8 +200,22 @@ const firebaseConfig = {
   <p id="sel-info">Inga områden valda</p>
   <button id="start-btn" onclick="beginQuiz()" disabled>Starta övning →</button>
   <button class="sel-btn" style="border-color:#ff6400;color:#ff6400;font-size:.85rem;padding:9px 22px" onclick="openLeaderboard()">Topplista 🏆</button>
+  <button class="sel-btn" onclick="goAreaQuiz()">Öva på områden 📍</button>
 </div>
- 
+
+<!-- AREA QUIZ MUNICIPALITY PICKER -->
+<div id="area-quiz-screen" style="display:none">
+  <div style="font-size:2.2rem">📍</div>
+  <h2>Öva på områden</h2>
+  <p class="aq-lbl">Välj orter:</p>
+  <div id="area-quiz-muni-bar">
+    <!-- knappar renderas av buildAreaQuizSourceBar() utifrån stationens datakällor -->
+  </div>
+  <p id="aq-sel-info">0 område(n) valda</p>
+  <button id="aq-start-btn" onclick="beginAreaQuiz()" disabled>Starta övning →</button>
+  <button class="sel-btn" onclick="goAreaQuizPicker()">← Tillbaka</button>
+</div>
+
 <!-- GAME -->
 <header>
   <div class="hbadge">🗺️ GP</div>
@@ -245,7 +259,7 @@ const firebaseConfig = {
     <button class="ebtn" style="background:rgba(255,255,255,0.1)" onclick="goArea()">Byt område 🗺️</button>
     <button class="ebtn" style="background:#ff6400;color:#fff" onclick="restart()">Öva igen 🔄</button>
   </div>
-  <button class="ebtn" style="background:transparent;border:1px solid #ff6400;color:#ff6400;margin-top:8px"
+  <button id="end-lb-btn" class="ebtn" style="background:transparent;border:1px solid #ff6400;color:#ff6400;margin-top:8px"
     onclick="openLeaderboard()">Topplista 🏆</button>
 </div>
 
@@ -441,6 +455,7 @@ const FALLBACK_STREETS = [
 // ═══════════════════════════════════════════════════
 const allStreets={};
 const areaStreets={};
+let roundaboutPolys=[]; // hit+vis-polylines för rondeller – hålls alltid överst
 let selectedAreas=new Set(), activeNames=[];
 let queue=[], idx=0, score={correct:0,wrong:0,skipped:0}, phase='loading';
 let dataSource='live';
@@ -450,6 +465,10 @@ const pinnedStyles=new Map(); // name → stilobjekt, ändras ej av hover
 const wrongFlash=new Set();   // tillfälligt röda gator (ej target), hover skall ignoreras
 let quizStartTime=null;
 let areasLayer=null;
+let quizMode='streets'; // 'streets'|'areas'
+let areaQuizLayers={};  // områdesnamn -> Leaflet layer (area-quizläge)
+let areaQuizGroup=null; // L.geoJSON-gruppen för area-quizläget
+let areaQuizSources=new Set(); // datakällor valda i områdesövningen
  
 // ═══════════════════════════════════════════════════
 //  STYLES
@@ -576,7 +595,10 @@ async function loadSource(id){
       var pre=await xhrGet(cfg.streetsUrl);
       if(pre&&pre.streets){
         var names=Object.keys(pre.streets);
-        names.forEach(function(n){addStreet(n,pre.streets[n]);});
+        // pre.roundabouts saknas i äldre datafiler – då ritas inga rondeller överst
+        var rab=pre.roundabouts||{};
+        names.forEach(function(n){addStreet(n,pre.streets[n],rab[n]);});
+        bringRoundaboutsToFront();
         console.log(cfg.label+': '+names.length+' gator från '+cfg.streetsUrl+
                     ' (genererad '+(pre.generated||'okänt datum')+')');
         return;
@@ -664,10 +686,10 @@ function assignAreas(allCoords){
   return matches.length>0?matches:['Övrigt'];
 }
  
-function addStreet(name,segList){
+function addStreet(name,segList,roundFlags){
   if(allStreets[name]) return; // no duplicates
   var polys=[],allCoords=[];
-  segList.forEach(function(coords){
+  segList.forEach(function(coords,i){
     allCoords=allCoords.concat(coords);
     var hit=L.polyline(coords,{color:'transparent',weight:22,opacity:0,interactive:true});
     var vis=L.polyline(coords,Object.assign({},S.hidden,{interactive:false}));
@@ -675,6 +697,7 @@ function addStreet(name,segList){
     hit.on('mouseover',function(){if(phase==='playing'&&isActive(name)&&!pinnedStyles.has(name)&&!wrongFlash.has(name))applyStyle(name,S.hover);});
     hit.on('mouseout', function(){if(phase==='playing'&&isActive(name)&&!wrongFlash.has(name))applyStyle(name,pinnedStyles.get(name)||S.normal);});
     hit.addTo(map); vis.addTo(map);
+    if(roundFlags&&roundFlags[i]) roundaboutPolys.push(hit,vis);
     polys.push({hit:hit,vis:vis});
   });
   var areas=assignAreas(allCoords);
@@ -686,15 +709,21 @@ function addStreet(name,segList){
   document.getElementById('load-count').textContent=Object.keys(allStreets).length;
 }
  
+function bringRoundaboutsToFront(){
+  roundaboutPolys.forEach(function(p){p.bringToFront();});
+}
+
 function buildFromOSM(data){
   var groups={};
   data.elements.forEach(function(way){
     var n=way.tags&&way.tags.name;
     if(!n||!way.geometry||!way.geometry.length) return;
-    if(!groups[n]) groups[n]=[];
-    groups[n].push(way.geometry.map(function(g){return[g.lat,g.lon];}));
+    if(!groups[n]) groups[n]={segs:[],round:[]};
+    groups[n].segs.push(way.geometry.map(function(g){return[g.lat,g.lon];}));
+    groups[n].round.push(way.tags.junction==='roundabout');
   });
-  Object.keys(groups).forEach(function(name){addStreet(name,groups[name]);});
+  Object.keys(groups).forEach(function(name){addStreet(name,groups[name].segs,groups[name].round);});
+  bringRoundaboutsToFront();
 }
  
 function buildFromFallback(){
@@ -838,6 +867,102 @@ function buildSourceBar(){
 }
 
 // ═══════════════════════════════════════════════════
+//  ÖVA PÅ OMRÅDEN (separat quizläge)
+// ═══════════════════════════════════════════════════
+function areaQuizCount(){
+  return AREAS_GEO.features.filter(function(f){
+    var name=f.properties&&f.properties['Område'];
+    return name&&areaQuizSources.has(getSource(name));
+  }).length;
+}
+
+// Speglar buildSourceBar() men styr områdesövningens egna urval.
+function buildAreaQuizSourceBar(){
+  var bar=document.getElementById('area-quiz-muni-bar');
+  var lbl=document.querySelector('.aq-lbl');
+  if(!bar) return;
+  var sources=(STATION&&STATION.sources)||[];
+  bar.innerHTML='';
+  var ensam=sources.length<2;
+  bar.style.display=ensam?'none':'flex';
+  if(lbl) lbl.style.display=ensam?'none':'';
+  if(ensam) return;
+  sources.forEach(function(src){
+    var b=document.createElement('button');
+    b.id='aqm-btn-'+src.id;
+    b.className='muni-btn'+(areaQuizSources.has(src.id)?' active':'');
+    b.textContent=src.label;
+    b.onclick=function(){toggleAreaQuizSource(src.id);};
+    bar.appendChild(b);
+  });
+}
+function updateAreaQuizInfo(){
+  var n=areaQuizCount();
+  document.getElementById('aq-sel-info').textContent=n+' område(n) valda';
+  document.getElementById('aq-start-btn').disabled=(n===0);
+}
+function toggleAreaQuizSource(id){
+  var btn=document.getElementById('aqm-btn-'+id);
+  if(areaQuizSources.has(id)){
+    if(areaQuizSources.size===1) return; // behåll alltid minst en
+    areaQuizSources.delete(id);
+    if(btn) btn.classList.remove('active');
+  }else{
+    areaQuizSources.add(id);
+    if(btn) btn.classList.add('active');
+  }
+  updateAreaQuizInfo();
+}
+function goAreaQuiz(){
+  document.getElementById('area-screen').style.display='none';
+  document.getElementById('area-quiz-screen').style.display='flex';
+  // Utga fran samma orter som ar valda pa omradesskarmen
+  areaQuizSources=new Set(activeSources);
+  buildAreaQuizSourceBar();
+  updateAreaQuizInfo();
+}
+function goAreaQuizPicker(){
+  document.getElementById('area-quiz-screen').style.display='none';
+  document.getElementById('area-screen').style.display='flex';
+}
+function buildAreaQuizLayer(){
+  if(areaQuizGroup){map.removeLayer(areaQuizGroup);areaQuizGroup=null;}
+  areaQuizLayers={};
+  areaQuizGroup=L.geoJSON(AREAS_GEO,{
+    filter:function(f){
+      return (f.geometry.type==='Polygon'||f.geometry.type==='MultiPolygon')
+        &&activeNames.indexOf(f.properties['Område'])>=0;
+    },
+    style:function(){return {color:S.normal.color,weight:S.normal.weight,opacity:S.normal.opacity,fillColor:S.normal.color,fillOpacity:0.12};},
+    onEachFeature:function(f,layer){
+      var name=f.properties['Område'];
+      areaQuizLayers[name]=layer;
+      layer.on('click',function(){handleClick(name);});
+      layer.on('mouseover',function(){
+        if(quizMode==='areas'&&!pinnedStyles.has(name)&&!wrongFlash.has(name)) applyStyle(name,S.hover);
+      });
+      layer.on('mouseout',function(){
+        if(quizMode==='areas'&&!pinnedStyles.has(name)&&!wrongFlash.has(name)) applyStyle(name,S.normal);
+      });
+    }
+  }).addTo(map);
+}
+function beginAreaQuiz(){
+  quizMode='areas';
+  activeNames=[];
+  AREAS_GEO.features.forEach(function(f){
+    var name=f.properties&&f.properties['Område'];
+    if(name&&areaQuizSources.has(getSource(name))&&activeNames.indexOf(name)<0) activeNames.push(name);
+  });
+  if(!activeNames.length) return;
+  document.getElementById('area-quiz-screen').style.display='none';
+  buildAreaQuizLayer();
+  var b=areaQuizGroup.getBounds();
+  if(b.isValid()) map.fitBounds(b.pad(0.1));
+  startGame();
+}
+
+// ═══════════════════════════════════════════════════
 //  AREA SCREEN
 // ═══════════════════════════════════════════════════
 function buildAreaGrid(){
@@ -899,6 +1024,8 @@ function goArea(){
   closeLeaderboard();
   if(autoAdvanceTimer){clearTimeout(autoAdvanceTimer);autoAdvanceTimer=null;}
   activeNames.forEach(function(n){applyStyle(n,S.hidden);});
+  if(areaQuizGroup){map.removeLayer(areaQuizGroup);areaQuizGroup=null;areaQuizLayers={};}
+  quizMode='streets';
   pinnedStyles.clear();
   correctStreets.clear();
   document.getElementById('end').classList.remove('show');
@@ -925,7 +1052,14 @@ function beginQuiz(){
 //  GAME
 // ═══════════════════════════════════════════════════
 function isActive(n){return activeNames.indexOf(n)>=0;}
-function applyStyle(n,s){if(allStreets[n])allStreets[n].polys.forEach(function(p){p.vis.setStyle(s);});}
+function applyStyle(n,s){
+  if(quizMode==='areas'){
+    var l=areaQuizLayers[n];
+    if(l) l.setStyle({color:s.color,weight:s.weight||2,opacity:s.opacity,fillColor:s.color,fillOpacity:s.opacity>0?0.35:0});
+    return;
+  }
+  if(allStreets[n])allStreets[n].polys.forEach(function(p){p.vis.setStyle(s);});
+}
 function showActive(){activeNames.forEach(function(n){applyStyle(n,S.normal);});}
 function resetActive(){activeNames.forEach(function(n){if(!correctStreets.has(n)&&!pinnedStyles.has(n))applyStyle(n,S.normal);});}
 function shuffle(a){return a.slice().sort(function(){return Math.random()-.5;});}
@@ -961,10 +1095,10 @@ function showWrongToast(name){
   el.textContent=name;
   el.classList.add('show');
   if(wrongToastTimer) clearTimeout(wrongToastTimer);
-  wrongToastTimer=setTimeout(function(){el.classList.remove('show');},1800);
+  wrongToastTimer=setTimeout(function(){el.classList.remove('show');},7000);
 }
 function handleClick(clicked){
-  if(phase!=='playing'||!isActive(clicked)) return;
+  if(phase!=='playing'||!isActive(clicked)||pinnedStyles.has(clicked)) return;
   var target=queue[idx];
   if(clicked===target){
     phase='feedback';
@@ -1074,7 +1208,8 @@ function showEnd(){
   var total=score.correct+score.wrong+score.skipped;
   var pct=Math.round((score.correct/total)*100);
   var elapsed=quizStartTime?Math.round((Date.now()-quizStartTime)/1000):0;
-  saveResult(pct,elapsed,total);
+  if(quizMode==='streets') saveResult(pct,elapsed,total);
+  document.getElementById('end-lb-btn').style.display=(quizMode==='streets')?'':'none';
   var mm=Math.floor(elapsed/60), ss=elapsed%60;
   document.getElementById('end-big').textContent=score.correct+'/'+total+' rätt ('+pct+'%)';
   document.getElementById('e-c').textContent=score.correct;

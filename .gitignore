@@ -9,3 +9,8 @@ areasbackup*
 # Python
 __pycache__/
 *.pyc
+
+# Node / Playwright
+node_modules/
+playwright-report/
+test-results/

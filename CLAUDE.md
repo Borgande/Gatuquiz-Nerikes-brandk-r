@@ -34,6 +34,10 @@ areas.geojson          – 40 GeoJSON-polygoner ("Område" + "station" per featu
 tenants.json           – organisationer och stationer (bbox, startvy, datafiler)
 tools/build-streets.py – hämtar Overpass → förgenererad gatudata i data/
 tools/test-areas.js    – regressionstest för områdeslogiken (`node tools/test-areas.js`)
+tests/smoke.spec.js    – Playwright-smoktester (`npx playwright test`), körs av CI
+playwright.config.js   – testkonfiguration, startar http-server på :4173
+package.json           – enbart devDependencies för testerna
+.github/workflows/ci.yml – kör npm ci + playwright test vid push och PR
 firestore.rules        – Firestore-regler (klistras in manuellt i Firebase Console)
 serva.bat              – startar lokal webbserver på :8000 och öppnar webbläsaren
 data/*.streets.json    – förgenererad gatudata per datakälla
@@ -65,6 +69,12 @@ ignorerade via mönstren `areas.geojson backup*` och `areasbackup*`.
   - `#lb-overlay` – topplista-overlay (z-index 9000)
 
 - **JavaScript** rader ~260–slutet — all logik i ett `<script>`-block
+
+**Två quizlägen** styrs av `quizMode`:
+- `'streets'` – standard: ett gatunamn visas, klicka rätt gata
+- `'areas'` – "Öva på områden": ett områdesnamn visas, klicka rätt polygon.
+  Egen skärm `#area-quiz-screen`, startas via `goAreaQuiz()` → `beginAreaQuiz()`.
+  Urvalet styrs av `areaQuizSources` (datakällor), som initieras från `activeSources`.
 
 ---
 
@@ -176,8 +186,11 @@ python tools/build-streets.py            # alla källor som saknar fil
 python tools/build-streets.py hallsberg  # tvinga om en enskild källa
 ```
 
-Format: `{org, station, source, bbox, generated, count, streets:{namn:[[[lat,lon],…]]}}`
-— `streets` matchar exakt vad `addStreet(namn, segList)` förväntar sig.
+Format: `{org, station, source, bbox, generated, count, streets:{…}, roundabouts:{…}}`
+— `streets` är `namn → [segment]` och matchar vad `addStreet(namn, segList, roundFlags)`
+förväntar sig. `roundabouts` är `namn → [bool]`, parallell med segmentlistan, och tas
+bara med för gator som faktiskt har en rondell. Fältet är **valfritt**: saknas det
+(äldre filer) ritas inga rondeller överst, men allt annat fungerar.
 
 Nuläge: Örebro 1 266 gator, Kumla 543, Hallsberg 579 (mot 121 i den gamla reservlistan).
 
@@ -346,6 +359,12 @@ Kör om skriptet när gatunätet har ändrats — några gånger om året räcke
 | `toggleSatellite()` | Byter `tileMap` ↔ `tileSat` |
 | `toggleAreasOverlay()` | Visar/döljer orange polygonöverlägg med etiketter |
 | `toggleSource(id)` | Väljer/avväljer datakälla (`activeSources`), lazy-laddar gatudata |
+| `bringRoundaboutsToFront()` | Lyfter rondellernas polylines överst så de inte göms |
+| `goAreaQuiz()` | Öppnar områdesövningen, speglar `activeSources` |
+| `buildAreaQuizSourceBar()` | Renderar ortsknappar i områdesövningen |
+| `toggleAreaQuizSource(id)` | Väljer/avväljer ort i områdesövningen |
+| `areaQuizCount()` | Antal områden som matchar valda källor |
+| `beginAreaQuiz()` | Startar områdesquizet (`quizMode='areas'`) |
 | `reloadAreas(btn)` | Laddar om `areas.geojson` + omtilldelar alla gator |
 | `doSkip()` | Hoppar över fråga, visar gatan grön (S.reveal) |
 | `goArea()` | Stänger topplista, visar area-screen |

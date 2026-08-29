@@ -63,15 +63,22 @@ def fetch(bbox):
 def to_app_format(data):
     """{gatunamn: [[[lat,lon],...], ...]} — samma form som addStreet() vill ha."""
     streets = {}
+    roundabouts = {}
     for way in data.get('elements', []):
-        name = (way.get('tags') or {}).get('name')
+        tags = way.get('tags') or {}
+        name = tags.get('name')
         geom = way.get('geometry')
         if not name or not geom:
             continue
         seg = [[round(p['lat'], DECIMALS), round(p['lon'], DECIMALS)] for p in geom]
         if len(seg) >= 2:
             streets.setdefault(name, []).append(seg)
-    return streets
+            # Parallell lista med segmentens rondellflaggor – appen ritar
+            # rondeller överst så de inte göms under korsande gator.
+            roundabouts.setdefault(name, []).append(tags.get('junction') == 'roundabout')
+    # Ta bara med gator som faktiskt har en rondell, filen blir annars onödigt stor.
+    roundabouts = {k: v for k, v in roundabouts.items() if any(v)}
+    return streets, roundabouts
 
 
 def main():
@@ -99,7 +106,7 @@ def main():
             print('    pausar 20s (Overpass rate limit)')
             time.sleep(20)
 
-        streets = to_app_format(fetch(source['bbox']))
+        streets, roundabouts = to_app_format(fetch(source['bbox']))
         done += 1
         if not streets:
             print('    VARNING: inga gator, hoppar över skrivning')
@@ -114,6 +121,7 @@ def main():
             'generated': time.strftime('%Y-%m-%d'),
             'count': len(streets),
             'streets': streets,
+            'roundabouts': roundabouts,
         }
         with io.open(out_path, 'w', encoding='utf-8', newline='') as fh:
             fh.write(json.dumps(payload, ensure_ascii=False, separators=(',', ':')))

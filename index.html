@@ -6,6 +6,9 @@
   <title>Gatuprov Örebro</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"/>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+  <script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <script>
@@ -179,7 +182,7 @@ const firebaseConfig = {
   <div id="data-source-badge" class="badge-live">● Live-data från OpenStreetMap</div>
   <div style="display:flex;align-items:center;gap:8px;width:100%;max-width:580px">
     <label for="player-name" style="color:#666;font-size:.82rem;white-space:nowrap">Ditt namn:</label>
-    <input id="player-name" type="text" maxlength="30" placeholder="Anonym"
+    <input id="player-name" type="text" maxlength="30" placeholder="Krävs för topplistan"
       style="background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;color:#fff;
              padding:8px 12px;font-size:.88rem;flex:1;min-height:44px;outline:none"/>
   </div>
@@ -261,6 +264,8 @@ const firebaseConfig = {
   </div>
   <button id="end-lb-btn" class="ebtn" style="background:transparent;border:1px solid #ff6400;color:#ff6400;margin-top:8px"
     onclick="openLeaderboard()">Topplista 🏆</button>
+  <p id="end-name-hint" style="display:none;color:#777;font-size:.78rem;margin-top:10px;max-width:320px">
+    Skriv ditt namn på startsidan för att komma med i topplistan.</p>
 </div>
 
 <!-- LEADERBOARD OVERLAY -->
@@ -293,17 +298,44 @@ const firebaseConfig = {
  
 <script>
 // ═══════════════════════════════════════════════════
-//  MAP  – CartoDB No Labels (ingen 403, inga gatunamn)
+//  MAP  – OpenFreeMap utan etiketter
+//
+//  Vektortiles i stället för rasterrutor, av två skäl:
+//  1. CARTO kräver numera API-nyckel och bränner in "API KEY REQUIRED"
+//     i bilderna. Rutorna svarar 200 – de är bara vandaliserade.
+//  2. Stilfilen är vår egen, så alla 23 textlager är bortplockade.
+//     Inga gatunamn (skulle avslöja svaret i gatuquizet) och inga
+//     områdesnamn (skulle avslöja svaret i områdesquizet). Lantmäteriets
+//     topografiska karta visar båda och kan därför inte användas.
+//
+//  OpenFreeMap kräver varken nyckel eller registrering.
 // ═══════════════════════════════════════════════════
 const map = L.map('map',{zoomControl:true}).setView([59.274,15.210],13);
-const tileMap=L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png',{
-  attribution:'© OpenStreetMap © CARTO', subdomains:'abcd', maxZoom:20
-});
+
+// Reserv om MapLibre inte kan laddas (blockerad CDN, gammal webbläsare).
+// Esri grå saknar också etiketter, så quizet fungerar även då.
+function skapaReservkarta(){
+  return L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    {attribution:'Tiles © Esri', maxZoom:16});
+}
+let tileMap;
+if(typeof L.maplibreGL==='function'&&typeof maplibregl!=='undefined'){
+  tileMap=L.maplibreGL({style:'liberty-nolabels.json',attribution:'© OpenStreetMap, OpenFreeMap'});
+}else{
+  console.warn('MapLibre kunde inte laddas – använder Esri grå som reservkarta');
+  tileMap=skapaReservkarta();
+}
 const tileSat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
   attribution:'Tiles © Esri — Maxar, GeoEye, Earthstar Geographics', maxZoom:19
 });
 let isSatellite=false;
 tileMap.addTo(map);
+
+// Rotation och adressfält som glider in/ut ändrar viewporten efter start.
+window.addEventListener('resize',function(){
+  clearTimeout(window.__kartresize);
+  window.__kartresize=setTimeout(synkaKartstorlek,150);
+});
  
 // ═══════════════════════════════════════════════════
 //  AREAS  – GeoJSON polygoner (koordinater: [lon,lat])
@@ -1075,7 +1107,19 @@ function startGame(){
   phase='playing';
   quizStartTime=Date.now();
   document.getElementById('end').classList.remove('show');
+  // Kartan har varit dold bakom områdesskärmen. Leaflet och MapLibre räknar
+  // ut sin storlek en gång, så utan detta kan kanvasen bli fel storlek –
+  // märks särskilt på mobil där adressfältet ändrar viewporten.
+  synkaKartstorlek();
   resetActive(); renderQ();
+}
+
+// Får kartan att fylla sin behållare igen. MapLibre rättar sig inte själv.
+function synkaKartstorlek(){
+  try{
+    map.invalidateSize();
+    if(tileMap&&tileMap.getMaplibreMap) tileMap.getMaplibreMap().resize();
+  }catch(e){ console.warn('kunde inte synka kartstorlek:',e); }
 }
  
 function renderQ(){
@@ -1208,8 +1252,10 @@ function showEnd(){
   var total=score.correct+score.wrong+score.skipped;
   var pct=Math.round((score.correct/total)*100);
   var elapsed=quizStartTime?Math.round((Date.now()-quizStartTime)/1000):0;
-  if(quizMode==='streets') saveResult(pct,elapsed,total);
+  var sparat=(quizMode==='streets')?saveResult(pct,elapsed,total):false;
   document.getElementById('end-lb-btn').style.display=(quizMode==='streets')?'':'none';
+  var namntips=document.getElementById('end-name-hint');
+  if(namntips) namntips.style.display=(quizMode==='streets'&&!sparat)?'block':'none';
   var mm=Math.floor(elapsed/60), ss=elapsed%60;
   document.getElementById('end-big').textContent=score.correct+'/'+total+' rätt ('+pct+'%)';
   document.getElementById('e-c').textContent=score.correct;
@@ -1331,9 +1377,12 @@ function aktivtScope(){
   return (ORG?ORG.id:'?')+'/'+(STATION?STATION.id:'?');
 }
 
+// Returnerar true om resultatet sparades. Utan namn sparas ingenting –
+// quizet fungerar som vanligt, men man hamnar inte i topplistan.
 function saveResult(pct,elapsed,total){
-  if(!db) return;
-  var name=((document.getElementById('player-name')||{}).value||'').trim()||'Anonym';
+  var name=((document.getElementById('player-name')||{}).value||'').trim();
+  if(!name) return false;
+  if(!db) return false;
   var areasArr=Array.from(selectedAreas).sort();
   db.collection('results').add({
     name:name,
@@ -1350,6 +1399,7 @@ function saveResult(pct,elapsed,total){
     elapsed:elapsed,
     timestamp:firebase.firestore.FieldValue.serverTimestamp()
   }).catch(function(e){console.warn('Firestore save:',e);});
+  return true;
 }
 
 // ═══════════════════════════════════════════════════

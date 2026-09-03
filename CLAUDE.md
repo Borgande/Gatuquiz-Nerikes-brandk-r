@@ -20,7 +20,8 @@ Byggt som en enda självständig `index.html` — ingen build-step, ingen paketh
 | Leaflet.js | 1.9.4 | Karta + polyline-interaktion (CDN) |
 | Firebase App compat | 9.23.0 | Firebase-initiering (CDN) |
 | Firebase Firestore compat | 9.23.0 | Spara/läsa topplista-resultat (CDN) |
-| CartoDB Voyager No Labels | – | Karttiles — **inga gatunamn, kritiskt för quizet!** |
+| MapLibre GL + maplibre-gl-leaflet | 4.7.1 | Renderar vektortiles i Leaflet (CDN) |
+| OpenFreeMap `liberty` | – | Karttiles, gratis utan API-nyckel |
 | ESRI World Imagery | – | Satellittiles (växla via knapp) |
 | OpenStreetMap Overpass API | – | Hämtar alla gator live vid start |
 
@@ -39,6 +40,7 @@ playwright.config.js   – testkonfiguration, startar http-server på :4173
 package.json           – enbart devDependencies för testerna
 .github/workflows/ci.yml – kör npm ci + playwright test vid push och PR
 firestore.rules        – Firestore-regler (klistras in manuellt i Firebase Console)
+liberty-nolabels.json  – kartstil utan textlager, varm palett (28 kB)
 serva.bat              – startar lokal webbserver på :8000 och öppnar webbläsaren
 data/*.streets.json    – förgenererad gatudata per datakälla
 pusha.bat              – git add -A → commit → push origin main
@@ -122,8 +124,23 @@ S.hidden  = {color:'transparent', weight:0, opacity:0}
 
 ## 7. Viktiga designval
 
-1. **Inga gatunamn på kartan** – CartoDB Voyager *No Labels* är ett hårdt krav.
-   Standard Voyager visar gatunamn och förstör quizet.
+1. **Inga etiketter alls på kartan** – hårt krav, och nu garanterat i egen kod.
+   `liberty-nolabels.json` är OpenFreeMaps `liberty`-stil där **alla 23 textlager**
+   (de med `layout['text-field']`) är bortplockade. Gatunamn avslöjar svaret i
+   gatuquizet; **områdesnamn avslöjar svaret i områdesquizet** – båda måste bort.
+
+   ⚠️ **CARTO togs bort 2026-09-03**: de kräver numera API-nyckel och bränner in
+   "API KEY REQUIRED" i bildrutorna. Rutorna svarar fortfarande 200, de är bara
+   vandaliserade.
+
+   ⚠️ **Lantmäteriets topografiska karta kan inte användas.** Kontrollerat mot
+   `topowebb`: vid 16 m/px visas områdesnamn (Vivalla, Varberga, Hjärsta), vid
+   1 m/px gatunamn och husnummer (Tegnérgatan, Västra Nobelgatan). Ingen etikettfri
+   variant finns, den kräver API-nyckel via Geotorget och levereras i SWEREF99 TM.
+
+   Vill man ändra kartans **färger** görs det i `liberty-nolabels.json` – paletten är
+   redan värmd mot Lantmäteriets utseende (laxrosa byggnader, varm beige bakgrund).
+   Lägg **aldrig** tillbaka ett lager med `text-field`.
 2. **Dubbla polylines per segment** – en tjock transparent hit-target (`weight:22`)
    + en tunn synlig linje. Skapas i `addStreet()`.
 3. **Ingen zoom vid klick** – kartvyn rör sig aldrig automatiskt.
@@ -152,6 +169,7 @@ Nuvarande innehåll:
 |---|---|---|
 | `orebro` | Gatuprov Örebro | orebro |
 | `byrsta` | Gatuprov Byrsta | kumla, hallsberg |
+| `nora` | Gatuprov Nora | nora |
 
 **Val av station** — `#station-bar` på områdesskärmen listar alla stationer, med
 stationens orter i mindre text under namnet (härlett ur `sources[].label`) så att man
@@ -192,7 +210,11 @@ förväntar sig. `roundabouts` är `namn → [bool]`, parallell med segmentlista
 bara med för gator som faktiskt har en rondell. Fältet är **valfritt**: saknas det
 (äldre filer) ritas inga rondeller överst, men allt annat fungerar.
 
-Nuläge: Örebro 1 266 gator, Kumla 543, Hallsberg 579 (mot 121 i den gamla reservlistan).
+Nuläge: Örebro 1 266 gator, Kumla 543, Hallsberg 579, Nora 189.
+
+**Nora-polygonen är härledd ur datan**, inte ritad för hand: ett konvext hölje kring
+samtliga gatukoordinater, buffrat 2 %. Därför hamnar 0 % i "Övrigt" (jämför Byrstas
+44 %). För en liten ort räcker ett område; finfördela med ritverktyget senare.
 
 ⚠️ **Kumla- och Hallsberg-bbox:arna överlappar** (59.06–59.14 delas), så 395 gatunamn
 finns i båda filerna. `addStreet()` har `if(allStreets[name]) return` — första källan
@@ -245,6 +267,7 @@ Kör om skriptet när gatunätet har ändrats — några gånger om året räcke
 - **Kollektion:** `results` — ett dokument per avslutat quiz:
   ```
   name      string   spelarens namn (max 30 tecken)
+  name      krävs    tomt namn → resultatet sparas INTE (anonymt spel tillåts)
   areas     array    ["Centrum","Öster"] – alfabetiskt sorterat
   areasKey  string   "Centrum + Öster" – för grupp-flik
   correct   int
@@ -357,6 +380,8 @@ Kör om skriptet när gatunätet har ändrats — några gånger om året räcke
 | `lbSort(arr)` | Sorterar: pct desc, sedan elapsed asc |
 | `lbEsc(s)` / `lbFmtTime(s)` / `lbFmtDate(ts)` | HTML-escape, tid, datum |
 | `toggleSatellite()` | Byter `tileMap` ↔ `tileSat` |
+| `synkaKartstorlek()` | `invalidateSize()` + MapLibre `resize()`; MapLibre rättar inte storleken själv |
+| `skapaReservkarta()` | Esri grå rasterkarta om MapLibre inte kan laddas |
 | `toggleAreasOverlay()` | Visar/döljer orange polygonöverlägg med etiketter |
 | `toggleSource(id)` | Väljer/avväljer datakälla (`activeSources`), lazy-laddar gatudata |
 | `bringRoundaboutsToFront()` | Lyfter rondellernas polylines överst så de inte göms |

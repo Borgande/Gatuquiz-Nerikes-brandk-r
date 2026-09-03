@@ -10,10 +10,15 @@
           "id": "orebro",
           "label": "Örebro",
           "title": "Gatuprov Örebro",
-          "center": [59.274, 15.21],
+          "center": [
+            59.274,
+            15.21
+          ],
           "zoom": 13,
           "areasUrl": "areas.geojson",
-          "defaultSources": ["orebro"],
+          "defaultSources": [
+            "orebro"
+          ],
           "sources": [
             {
               "id": "orebro",
@@ -27,10 +32,16 @@
           "id": "byrsta",
           "label": "Byrsta",
           "title": "Gatuprov Byrsta",
-          "center": [59.1, 15.105],
+          "center": [
+            59.1,
+            15.105
+          ],
           "zoom": 12,
           "areasUrl": "areas.geojson",
-          "defaultSources": ["kumla", "hallsberg"],
+          "defaultSources": [
+            "kumla",
+            "hallsberg"
+          ],
           "sources": [
             {
               "id": "kumla",
@@ -43,6 +54,28 @@
               "label": "Hallsberg",
               "bbox": "(58.97,14.87,59.14,15.22)",
               "streetsUrl": "data/nerikes-hallsberg.streets.json"
+            }
+          ]
+        },
+        {
+          "id": "nora",
+          "label": "Nora",
+          "title": "Gatuprov Nora",
+          "center": [
+            59.517,
+            15.038
+          ],
+          "zoom": 14,
+          "areasUrl": "areas.geojson",
+          "defaultSources": [
+            "nora"
+          ],
+          "sources": [
+            {
+              "id": "nora",
+              "label": "Nora",
+              "bbox": "(59.48,14.95,59.56,15.12)",
+              "streetsUrl": "data/nerikes-nora.streets.json"
             }
           ]
         }

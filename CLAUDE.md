@@ -41,6 +41,7 @@ package.json           – enbart devDependencies för testerna
 .github/workflows/ci.yml – kör npm ci + playwright test vid push och PR
 firestore.rules        – Firestore-regler (klistras in manuellt i Firebase Console)
 liberty-nolabels.json  – kartstil utan textlager, varm palett (28 kB)
+admin.html             – ritverktyg för områdespolygoner (se §8b)
 serva.bat              – startar lokal webbserver på :8000 och öppnar webbläsaren
 data/*.streets.json    – förgenererad gatudata per datakälla
 pusha.bat              – git add -A → commit → push origin main
@@ -257,6 +258,37 @@ Kör om skriptet när gatunätet har ändrats — några gånger om året räcke
 
 ---
 
+## 8b. Ritverktyget (`admin.html`)
+
+Öppnas via `http://localhost:8000/admin.html` (eller `.../admin.html` på Pages).
+Egen sida — spelarna ska aldrig se redigeringsläget, och `index.html` är redan stor.
+Verktyget skriver **ingenting** till servern; det laddar filer och laddar ner en ny.
+
+**Arbetsflöde:** välj station → rita polygoner → exportera → ersätt `areas.geojson`
+i projektmappen → `pusha.bat`.
+
+- **Gatunätet ritas i bakgrunden.** Gator som hamnar i `'Övrigt'` är **röda**, övriga
+  tunt blå. Räknaren längst ner uppdateras direkt när man ritar, så man ser
+  omedelbart om ett område faktiskt fångar gatorna.
+- **Leaflet-Geoman** sköter ritning och redigering. Snappning är på, så angränsande
+  områden kan mötas utan glapp.
+- **`tillLeaflet()` / `tillGeoJSON()`** är de enda ställena där koordinatordningen
+  konverteras (GeoJSON `[lon,lat]` ↔ Leaflet `[lat,lon]`). Gör aldrig konverteringen
+  någon annanstans.
+
+⚠️ **Exporten slår ihop, den ersätter inte.** Verktyget visar en station i taget men
+håller hela `areas.geojson` i `ALLA_FEATURES`. Vid export skrivs **bara den aktiva
+stationens** features om; övriga kopieras oförändrade. Utan det hade en Nora-session
+raderat alla Örebro-polygoner. Exporten vägrar dessutom om något område saknar
+`station` eller `source`.
+
+⚠️ **`outerRings`, `pointInPolygon` och `assignAreas` är kopierade från `index.html`.**
+`tools/test-areas.js` kör båda filernas versioner mot samma indata och fäller CI om
+de ger olika svar — den logiken har redan orsakat en bugg en gång. Ändrar du dem i
+`index.html` måste du ändra dem i `admin.html` också.
+
+---
+
 ## 9. Firebase-konfiguration
 
 - **Projekt:** `gatuprov-orebro` (Firestore redan aktiverat, region `eur3`)
@@ -391,6 +423,7 @@ Kör om skriptet när gatunätet har ändrats — några gånger om året räcke
 | `areaQuizCount()` | Antal områden som matchar valda källor |
 | `beginAreaQuiz()` | Startar områdesquizet (`quizMode='areas'`) |
 | `reloadAreas(btn)` | Laddar om `areas.geojson` + omtilldelar alla gator |
+| `synkaKartstorlek()` | Finns även i `admin.html`; MapLibre rättar inte storleken själv |
 | `doSkip()` | Hoppar över fråga, visar gatan grön (S.reveal) |
 | `goArea()` | Stänger topplista, visar area-screen |
 

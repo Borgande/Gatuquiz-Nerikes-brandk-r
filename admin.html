@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Områdesritare – Gatuprov</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"/>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.css"/>
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@2.17.0/dist/leaflet-geoman.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',sans-serif;background:#0d0d0d;color:#fff;height:100vh;display:flex;overflow:hidden}
+  #panel{width:330px;flex-shrink:0;background:#111;border-right:2px solid #ff6400;display:flex;flex-direction:column;overflow:hidden}
+  #panel h1{font-size:1rem;color:#ff6400;padding:12px 14px;border-bottom:1px solid #222}
+  .sek{padding:10px 14px;border-bottom:1px solid #1e1e1e}
+  .lbl{font-size:.7rem;color:#666;text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:5px}
+  select,input{width:100%;background:#1a1a1a;border:1px solid #2a2a2a;color:#fff;border-radius:7px;padding:8px 10px;font-size:.85rem;outline:none}
+  select:focus,input:focus{border-color:#ff6400}
+  .knapp{background:#ff6400;color:#fff;border:none;border-radius:8px;padding:9px 14px;font-size:.84rem;font-weight:700;cursor:pointer;width:100%;margin-top:7px}
+  .knapp.sekundar{background:rgba(255,255,255,0.06);border:1px solid #3a3a3a;color:#bbb}
+  .knapp:disabled{opacity:.45;cursor:not-allowed}
+  #lista{flex:1;overflow-y:auto;padding:6px 10px}
+  .omr{background:rgba(255,255,255,0.04);border:1px solid #2a2a2a;border-radius:8px;padding:8px 10px;margin-bottom:6px;cursor:pointer}
+  .omr:hover{border-color:#ff6400}
+  .omr.vald{border-color:#ff6400;background:rgba(255,100,0,0.12)}
+  .omr .namn{font-size:.87rem;font-weight:700}
+  .omr .meta{font-size:.71rem;color:#777;margin-top:2px}
+  .omr .noll{color:#ff6666}
+  #tackning{font-size:.8rem;line-height:1.5;padding:10px 14px;background:#141414;border-top:1px solid #222}
+  #tackning b{color:#00e676}
+  #tackning .ovrigt{color:#ff8a4c}
+  #karta{flex:1}
+  #status{position:absolute;bottom:12px;left:346px;background:rgba(0,0,0,0.85);color:#ff6400;padding:7px 14px;border-radius:8px;font-size:.8rem;z-index:900;display:none}
+  .hjalp{font-size:.72rem;color:#666;line-height:1.5;margin-top:6px}
+</style>
+</head>
+<body>
+
+<div id="panel">
+  <h1>🖉 Områdesritare</h1>
+
+  <div class="sek">
+    <div class="lbl">Station</div>
+    <select id="stationsval"></select>
+    <div class="hjalp" id="stationsinfo"></div>
+  </div>
+
+  <div class="sek">
+    <button class="knapp" id="rita-btn">Rita nytt område</button>
+    <button class="knapp sekundar" id="avbryt-btn" style="display:none">Avbryt ritning</button>
+    <div class="hjalp">Klicka ut hörnen på kartan. Dubbelklicka för att avsluta.
+      Dra i handtagen för att justera ett färdigt område.</div>
+  </div>
+
+  <div class="lbl" style="padding:8px 14px 0">Områden</div>
+  <div id="lista"></div>
+
+  <div id="tackning">Laddar…</div>
+
+  <div class="sek">
+    <button class="knapp" id="export-btn">Exportera areas.geojson</button>
+    <div class="hjalp">Filen laddas ner. Ersätt <code>areas.geojson</code> i
+      projektmappen och kör <code>pusha.bat</code>.</div>
+  </div>
+</div>
+
+<div id="karta"></div>
+<div id="status"></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  DELAD OMRÅDESLOGIK
+//
+//  Kopierad ur index.html. tools/test-areas.js kör båda filernas
+//  versioner mot samma indata och fäller CI om de glider isär —
+//  just den här logiken har redan orsakat en bugg en gång.
+// ═══════════════════════════════════════════════════
+function outerRings(geom){
+  if(!geom) return [];
+  if(geom.type==='Polygon') return [geom.coordinates[0]];
+  if(geom.type==='MultiPolygon') return geom.coordinates.map(function(p){return p[0];});
+  return [];
+}
+
+function pointInPolygon(lat,lon,ring){
+  var inside=false;
+  for(var i=0,j=ring.length-1;i<ring.length;j=i++){
+    var xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];
+    if(((yi>lat)!==(yj>lat))&&(lon<(xj-xi)*(lat-yi)/(yj-yi)+xi))inside=!inside;
+  }
+  return inside;
+}
+
+function assignAreas(allCoords){
+  if(!allCoords.length) return ['Övrigt'];
+  var N=Math.min(allCoords.length,9);
+  var counts={};
+  for(var s=0;s<N;s++){
+    var idx=N===1?0:Math.round(s*(allCoords.length-1)/(N-1));
+    var lat=allCoords[idx][0],lon=allCoords[idx][1];
+    for(var i=0;i<AREAS_GEO.features.length;i++){
+      var f=AREAS_GEO.features[i];
+      var rings=outerRings(f.geometry);
+      for(var r=0;r<rings.length;r++){
+        if(pointInPolygon(lat,lon,rings[r])){
+          var a=f.properties['Område'];
+          counts[a]=(counts[a]||0)+1;
+          break; // räkna varje feature högst en gång per samplad punkt
+        }
+      }
+    }
+  }
+  var threshold=Math.max(1,Math.ceil(N*0.3));
+  var matches=Object.keys(counts).filter(function(a){return counts[a]>=threshold;});
+  return matches.length>0?matches:['Övrigt'];
+}
+
+// ═══════════════════════════════════════════════════
+//  KOORDINATORDNING
+//
+//  GeoJSON är [lon,lat], Leaflet är [lat,lon]. All konvertering
+//  sker här – att blanda ihop dem är den klassiska buggen i det
+//  här projektet.
+// ═══════════════════════════════════════════════════
+function tillLeaflet(ring){   // [[lon,lat],…] → [[lat,lon],…]
+  return ring.map(function(p){return [p[1],p[0]];});
+}
+function tillGeoJSON(latlngs){ // Leaflet LatLng[] → [[lon,lat],…] sluten ring
+  var r=latlngs.map(function(p){return [+p.lng.toFixed(6),+p.lat.toFixed(6)];});
+  if(r.length&&(r[0][0]!==r[r.length-1][0]||r[0][1]!==r[r.length-1][1])) r.push(r[0]);
+  return r;
+}
+
+// ═══════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════
+var TENANTS=null;
+var ALLA_FEATURES=[];        // hela areas.geojson – även andra stationer
+var AREAS_GEO={type:'FeatureCollection',features:[]}; // bara aktiv station
+var ORG=null, STATION=null;
+var gator={};                // namn → [[lat,lon],…]
+var lager={};                // områdesnamn → Leaflet-lager
+var gatlager=null;
+var valtOmrade=null;
+var tackning={};             // områdesnamn → antal gator
+
+var map=L.map('karta',{zoomControl:true}).setView([59.274,15.210],13);
+if(typeof L.maplibreGL==='function'&&typeof maplibregl!=='undefined'){
+  L.maplibreGL({style:'liberty-nolabels.json',attribution:'© OpenStreetMap, OpenFreeMap'}).addTo(map);
+}else{
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    {attribution:'Tiles © Esri',maxZoom:16}).addTo(map);
+}
+
+// MapLibre räknar ut sin storlek en gång och rättar sig inte själv när
+// behållaren ändras. Samma fix som i index.html.
+function synkaKartstorlek(){
+  try{
+    map.invalidateSize();
+    map.eachLayer(function(l){ if(l.getMaplibreMap) l.getMaplibreMap().resize(); });
+  }catch(e){ console.warn('kunde inte synka kartstorlek:',e); }
+}
+window.addEventListener('resize',function(){
+  clearTimeout(window.__kr); window.__kr=setTimeout(synkaKartstorlek,150);
+});
+
+function status(txt,ms){
+  var el=document.getElementById('status');
+  if(!txt){el.style.display='none';return;}
+  el.textContent=txt; el.style.display='block';
+  if(ms) setTimeout(function(){el.style.display='none';},ms);
+}
+
+function xhrGet(url){
+  return new Promise(function(res,rej){
+    var x=new XMLHttpRequest();
+    x.open('GET',url,true); x.timeout=20000;
+    x.onload=function(){
+      if(x.status>=200&&x.status<300){
+        try{res(JSON.parse(x.responseText));}catch(e){rej(new Error('Trasig JSON i '+url));}
+      }else rej(new Error('HTTP '+x.status+' för '+url));
+    };
+    x.onerror=function(){rej(new Error('Nätverksfel: '+url));};
+    x.ontimeout=function(){rej(new Error('Timeout: '+url));};
+    x.send();
+  });
+}
+
+// ═══════════════════════════════════════════════════
+//  LADDNING
+// ═══════════════════════════════════════════════════
+async function start(){
+  try{
+    TENANTS=await xhrGet('tenants.json?t='+Date.now());
+    var geo=await xhrGet('areas.geojson?t='+Date.now());
+    ALLA_FEATURES=geo.features||[];
+  }catch(e){
+    status('Kunde inte ladda data: '+e.message);
+    document.getElementById('tackning').textContent='Fel: '+e.message+
+      ' – kör via serva.bat, inte genom att öppna filen direkt.';
+    return;
+  }
+  var sel=document.getElementById('stationsval');
+  TENANTS.orgs.forEach(function(o){
+    o.stations.forEach(function(st){
+      var opt=document.createElement('option');
+      opt.value=o.id+'/'+st.id;
+      opt.textContent=(TENANTS.orgs.length>1?o.label+' – ':'')+st.label;
+      sel.appendChild(opt);
+    });
+  });
+  sel.onchange=function(){valjStation(sel.value);};
+  await valjStation(sel.value);
+}
+
+async function valjStation(nyckel){
+  var bitar=nyckel.split('/');
+  ORG=TENANTS.orgs.filter(function(o){return o.id===bitar[0];})[0];
+  STATION=ORG.stations.filter(function(s){return s.id===bitar[1];})[0];
+
+  document.getElementById('stationsinfo').textContent=
+    'Orter: '+STATION.sources.map(function(s){return s.label;}).join(', ');
+
+  if(STATION.center) map.setView(STATION.center,STATION.zoom||13);
+
+  // Bara den här stationens polygoner är redigerbara
+  AREAS_GEO={type:'FeatureCollection',
+    features:ALLA_FEATURES.filter(function(f){return (f.properties.station||'orebro')===STATION.id;})};
+
+  await laddaGator();
+  ritaOmraden();
+  raknaOm();
+  synkaKartstorlek();
+}
+
+async function laddaGator(){
+  gator={};
+  status('Laddar gator…');
+  for(var i=0;i<STATION.sources.length;i++){
+    var src=STATION.sources[i];
+    try{
+      var d=await xhrGet(src.streetsUrl+'?t='+Date.now());
+      Object.keys(d.streets||{}).forEach(function(n){
+        if(gator[n]) return; // samma dedup som addStreet() i appen
+        var coords=[];
+        d.streets[n].forEach(function(seg){coords=coords.concat(seg);});
+        // segs ritas var för sig, coords används för områdestilldelning
+        gator[n]={segs:d.streets[n],coords:coords};
+      });
+    }catch(e){ console.warn('Kunde inte ladda '+src.streetsUrl,e); }
+  }
+  status('');
+}
+
+// ═══════════════════════════════════════════════════
+//  RITNING
+// ═══════════════════════════════════════════════════
+function ritaOmraden(){
+  Object.keys(lager).forEach(function(n){map.removeLayer(lager[n]);});
+  lager={};
+  AREAS_GEO.features.forEach(function(f){
+    var namn=f.properties['Område'];
+    outerRings(f.geometry).forEach(function(ring){
+      var p=L.polygon(tillLeaflet(ring),
+        {color:'#ff6400',weight:2,fillColor:'#ff6400',fillOpacity:0.12});
+      p.addTo(map);
+      p.on('click',function(){valjOmrade(namn);});
+      p.on('pm:edit',function(){sparaGeometri(namn,p);});
+      p.on('pm:dragend',function(){sparaGeometri(namn,p);});
+      p.pm.enable({allowSelfIntersection:false});
+      lager[namn]=p;
+    });
+  });
+}
+
+// Skriver tillbaka en redigerad polygon till AREAS_GEO och ALLA_FEATURES
+function sparaGeometri(namn,polygon){
+  var latlngs=polygon.getLatLngs()[0];
+  var ring=tillGeoJSON(latlngs);
+  var f=AREAS_GEO.features.filter(function(x){return x.properties['Område']===namn;})[0];
+  if(!f) return;
+  f.geometry={type:'Polygon',coordinates:[ring]};
+  raknaOm();
+}
+
+function valjOmrade(namn){
+  valtOmrade=namn;
+  Object.keys(lager).forEach(function(n){
+    lager[n].setStyle({weight:n===namn?4:2,fillOpacity:n===namn?0.25:0.12});
+  });
+  renderaLista();
+}
+
+document.getElementById('rita-btn').onclick=function(){
+  map.pm.enableDraw('Polygon',{snappable:true,snapDistance:15,allowSelfIntersection:false});
+  document.getElementById('rita-btn').style.display='none';
+  document.getElementById('avbryt-btn').style.display='block';
+  status('Klicka ut hörnen. Dubbelklicka för att avsluta.');
+};
+document.getElementById('avbryt-btn').onclick=function(){
+  map.pm.disableDraw();
+  avslutaRitlage();
+};
+function avslutaRitlage(){
+  document.getElementById('rita-btn').style.display='block';
+  document.getElementById('avbryt-btn').style.display='none';
+  status('');
+}
+
+map.on('pm:create',function(e){
+  var lag=e.layer;
+  var namn=(prompt('Namn på området:')||'').trim();
+  if(!namn){ map.removeLayer(lag); avslutaRitlage(); return; }
+  if(AREAS_GEO.features.some(function(f){return f.properties['Område']===namn;})){
+    alert('Det finns redan ett område som heter "'+namn+'" i den här stationen.');
+    map.removeLayer(lag); avslutaRitlage(); return;
+  }
+  // Har stationen flera orter måste källan anges, annars hamnar området
+  // under fel rubrik och avmarkeras av fel ortsknapp.
+  var kalla=STATION.sources[0].id;
+  if(STATION.sources.length>1){
+    var val=prompt('Vilken ort tillhör "'+namn+'"?\n'+
+      STATION.sources.map(function(s){return s.id+' = '+s.label;}).join('\n'),
+      STATION.sources[0].id);
+    if(!val){ map.removeLayer(lag); avslutaRitlage(); return; }
+    val=val.trim().toLowerCase();
+    if(!STATION.sources.some(function(s){return s.id===val;})){
+      alert('Okänd ort: '+val); map.removeLayer(lag); avslutaRitlage(); return;
+    }
+    kalla=val;
+  }
+  var f={type:'Feature',
+    properties:{'Område':namn,station:STATION.id,source:kalla},
+    geometry:{type:'Polygon',coordinates:[tillGeoJSON(lag.getLatLngs()[0])]}};
+  AREAS_GEO.features.push(f);
+  ALLA_FEATURES.push(f);
+  map.removeLayer(lag);
+  ritaOmraden();
+  valjOmrade(namn);
+  raknaOm();
+  avslutaRitlage();
+});
+
+function taBort(namn){
+  if(!confirm('Ta bort området "'+namn+'"?')) return;
+  AREAS_GEO.features=AREAS_GEO.features.filter(function(f){return f.properties['Område']!==namn;});
+  ALLA_FEATURES=ALLA_FEATURES.filter(function(f){
+    return !(f.properties['Område']===namn&&(f.properties.station||'orebro')===STATION.id);
+  });
+  if(valtOmrade===namn) valtOmrade=null;
+  ritaOmraden(); raknaOm();
+}
+
+function bytNamn(gammalt){
+  var nytt=(prompt('Nytt namn:',gammalt)||'').trim();
+  if(!nytt||nytt===gammalt) return;
+  if(AREAS_GEO.features.some(function(f){return f.properties['Område']===nytt;})){
+    alert('Namnet används redan.'); return;
+  }
+  AREAS_GEO.features.forEach(function(f){
+    if(f.properties['Område']===gammalt) f.properties['Område']=nytt;
+  });
+  ritaOmraden(); raknaOm();
+}
+
+// ═══════════════════════════════════════════════════
+//  TÄCKNING
+// ═══════════════════════════════════════════════════
+function raknaOm(){
+  tackning={};
+  var namn=Object.keys(gator), ovrigt=0;
+  namn.forEach(function(n){
+    var omr=assignAreas(gator[n].coords);
+    if(omr.length===1&&omr[0]==='Övrigt') ovrigt++;
+    omr.forEach(function(a){tackning[a]=(tackning[a]||0)+1;});
+  });
+  var totalt=namn.length, tackta=totalt-ovrigt;
+  var pct=totalt?Math.round(ovrigt/totalt*100):0;
+  document.getElementById('tackning').innerHTML=
+    '<b>'+tackta+'</b> av '+totalt+' gator täckta<br>'+
+    '<span class="ovrigt">'+ovrigt+' i Övrigt ('+pct+' %)</span>';
+  ritaGator(ovrigt>0);
+  renderaLista();
+}
+
+// Gatunätet som bakgrund: röda gator ligger utanför alla polygoner,
+// så man ser direkt var det behöver ritas.
+function ritaGator(visaOvrigt){
+  if(gatlager) map.removeLayer(gatlager);
+  var linjer=[];
+  Object.keys(gator).forEach(function(n){
+    var utanfor=assignAreas(gator[n].coords)[0]==='Övrigt';
+    if(!visaOvrigt&&!utanfor) return;
+    var stil={color:utanfor?'#ff4444':'#3a7cbf',
+      weight:utanfor?3:1.5,
+      opacity:utanfor?0.9:0.35,
+      interactive:false};
+    // Ett polyline per segment - annars dras en rak linje mellan segmenten
+    gator[n].segs.forEach(function(seg){ linjer.push(L.polyline(seg,stil)); });
+  });
+  gatlager=L.layerGroup(linjer).addTo(map);
+  if(Object.keys(lager).length) Object.keys(lager).forEach(function(n){lager[n].bringToFront();});
+}
+
+function renderaLista(){
+  var el=document.getElementById('lista');
+  el.innerHTML='';
+  var namn=AREAS_GEO.features.map(function(f){return f.properties['Område'];}).sort();
+  if(!namn.length){
+    el.innerHTML='<div class="hjalp" style="padding:8px">Inga områden för den här '+
+      'stationen ännu. Klicka "Rita nytt område".</div>';
+    return;
+  }
+  namn.forEach(function(n){
+    var f=AREAS_GEO.features.filter(function(x){return x.properties['Område']===n;})[0];
+    var antal=tackning[n]||0;
+    var d=document.createElement('div');
+    d.className='omr'+(n===valtOmrade?' vald':'');
+    d.innerHTML='<div class="namn">'+n.replace(/</g,'&lt;')+'</div>'+
+      '<div class="meta'+(antal?'':' noll')+'">'+antal+' gator · ort: '+
+      (f.properties.source||'–')+'</div>';
+    d.onclick=function(){
+      valjOmrade(n);
+      if(lager[n]) map.fitBounds(lager[n].getBounds().pad(0.1));
+    };
+    var rad=document.createElement('div');
+    rad.style.cssText='display:flex;gap:6px;margin-top:6px';
+    var b1=document.createElement('button');
+    b1.className='knapp sekundar'; b1.style.cssText='margin:0;padding:5px 8px;font-size:.72rem';
+    b1.textContent='Byt namn'; b1.onclick=function(ev){ev.stopPropagation();bytNamn(n);};
+    var b2=document.createElement('button');
+    b2.className='knapp sekundar'; b2.style.cssText='margin:0;padding:5px 8px;font-size:.72rem;color:#ff6666';
+    b2.textContent='Ta bort'; b2.onclick=function(ev){ev.stopPropagation();taBort(n);};
+    rad.appendChild(b1); rad.appendChild(b2);
+    d.appendChild(rad);
+    el.appendChild(d);
+  });
+}
+
+// ═══════════════════════════════════════════════════
+//  EXPORT
+//
+//  Kritiskt: andra stationers features måste följa med oförändrade.
+//  Utan det raderar en Nora-session alla Örebro-polygoner.
+// ═══════════════════════════════════════════════════
+document.getElementById('export-btn').onclick=function(){
+  var andra=ALLA_FEATURES.filter(function(f){
+    return (f.properties.station||'orebro')!==STATION.id;
+  });
+  var ut={type:'FeatureCollection',features:andra.concat(AREAS_GEO.features)};
+
+  var saknar=ut.features.filter(function(f){return !f.properties.station||!f.properties.source;});
+  if(saknar.length){
+    alert('Avbryter: '+saknar.length+' område(n) saknar station eller ort. '+
+          'De skulle hamna fel i appen.');
+    return;
+  }
+
+  var blob=new Blob([JSON.stringify(ut)],{type:'application/geo+json'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='areas.geojson';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
+
+  status('Exporterade '+ut.features.length+' områden ('+
+         AREAS_GEO.features.length+' för '+STATION.label+', '+
+         andra.length+' för övriga stationer)',6000);
+};
+
+start();
+</script>
+</body>
+</html>

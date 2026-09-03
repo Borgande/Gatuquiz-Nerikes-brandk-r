@@ -10,6 +10,7 @@ vilket gör appen oberoende av att Overpass svarar.
 """
 import io
 import json
+import math
 import os
 import sys
 import time
@@ -22,8 +23,20 @@ MIRRORS = [
     'https://overpass.kumi.systems/api/interpreter',
     'https://overpass.openstreetmap.ru/api/interpreter',
 ]
+# Korbara vagar. *_link ar pa- och avfarter - utan dem saknas delar av
+# gator som Nygatan i Orebro. pedestrian ar gagator och torg, som en
+# raddningstjanst behover kunna och som far kora dar.
 HIGHWAY = ('motorway|trunk|primary|secondary|tertiary|unclassified'
-           '|residential|service|living_street|road')
+           '|residential|service|living_street|road|pedestrian'
+           '|motorway_link|trunk_link|primary_link|secondary_link|tertiary_link')
+
+# Hamtas ocksa, men behalls BARA om namnet redan finns bland typerna ovan.
+# Sa blir t.ex. Norra Skyttegatans cykelvagsdel komplett utan att rena
+# cykelvagar blir egna svar i quizet.
+KOMPLETTERANDE = 'cycleway'
+
+# Aldrig med: construction ar vagar under byggnation, resten ar inte korbara.
+UTESLUTNA = ('construction', 'footway', 'path', 'steps', 'bridleway')
 DECIMALS = 5  # ~1 m upplösning; halverar filstorleken mot full precision
 # Overpass svarar 406 på anrop utan riktig User-Agent och ber uttryckligen om
 # att klienten identifierar sig.
@@ -31,8 +44,8 @@ USER_AGENT = 'Gatuprov-byggverktyg/1.0 (+https://github.com/borgande/Gatuquiz-Ne
 
 
 def fetch(bbox):
-    query = ('[out:json][timeout:90];way["highway"~"^(%s)$"]["name"]%s;'
-             'out body geom;' % (HIGHWAY, bbox))
+    query = ('[out:json][timeout:90];way["highway"~"^(%s|%s)$"]["name"]%s;'
+             'out body geom;' % (HIGHWAY, KOMPLETTERANDE, bbox))
     qs = urllib.parse.urlencode({'data': query})
     last = None
     for attempt in range(3):
@@ -60,25 +73,91 @@ def fetch(bbox):
     raise SystemExit('  Alla speglar misslyckades. Senaste fel: %s' % last)
 
 
+KLUSTERGRANS_M = 300.0  # gap storre an sa = olika gator med samma namn
+
+
+def _meter(a, b):
+    """Grovt avstand i meter mellan tva [lat, lon]."""
+    dlat = (a[0] - b[0]) * 111320.0
+    dlon = (a[1] - b[1]) * 111320.0 * math.cos(math.radians(a[0]))
+    return math.hypot(dlat, dlon)
+
+
+def klustra(segs):
+    """Vilken forekomst varje segment tillhor.
+
+    Gatunamn som Skolvagen finns i varenda by. Utan uppdelning slas de ihop
+    till ett objekt, och da kan hela klumpen hamna i ett omrade tva mil bort.
+    Union-find: tva segment hor ihop om nagon andpunkt ligger inom
+    KLUSTERGRANS_M fran den andras.
+    """
+    n = len(segs)
+    forald = list(range(n))
+
+    def hitta(x):
+        while forald[x] != x:
+            forald[x] = forald[forald[x]]
+            x = forald[x]
+        return x
+
+    andar = [[s[0], s[-1]] for s in segs]
+    for i in range(n):
+        for j in range(i + 1, n):
+            if hitta(i) == hitta(j):
+                continue
+            if any(_meter(p, q) <= KLUSTERGRANS_M for p in andar[i] for q in andar[j]):
+                forald[hitta(i)] = hitta(j)
+
+    # Numrera om till 0,1,2… i segmentordning
+    nummer, ut = {}, []
+    for i in range(n):
+        r = hitta(i)
+        if r not in nummer:
+            nummer[r] = len(nummer)
+        ut.append(nummer[r])
+    return ut
+
+
 def to_app_format(data):
     """{gatunamn: [[[lat,lon],...], ...]} — samma form som addStreet() vill ha."""
     streets = {}
     roundabouts = {}
+    typer = {}
     for way in data.get('elements', []):
         tags = way.get('tags') or {}
         name = tags.get('name')
         geom = way.get('geometry')
-        if not name or not geom:
+        hw = tags.get('highway')
+        if not name or not geom or hw in UTESLUTNA:
             continue
         seg = [[round(p['lat'], DECIMALS), round(p['lon'], DECIMALS)] for p in geom]
         if len(seg) >= 2:
             streets.setdefault(name, []).append(seg)
+            typer.setdefault(name, set()).add(hw)
             # Parallell lista med segmentens rondellflaggor – appen ritar
             # rondeller överst så de inte göms under korsande gator.
             roundabouts.setdefault(name, []).append(tags.get('junction') == 'roundabout')
+
+    # Rena cykelvagar blir inte egna svar. Har gatan aven en korbar del far
+    # cykelvagsdelen folja med, sa att t.ex. Norra Skyttegatan blir komplett.
+    enbart_cykel = [n for n, t in typer.items() if t == {KOMPLETTERANDE}]
+    for n in enbart_cykel:
+        streets.pop(n, None)
+        roundabouts.pop(n, None)
+
     # Ta bara med gator som faktiskt har en rondell, filen blir annars onödigt stor.
     roundabouts = {k: v for k, v in roundabouts.items() if any(v)}
-    return streets, roundabouts
+
+    # Bara gator som faktiskt delas upp behover fältet.
+    clusters = {}
+    for namn, segs in streets.items():
+        if len(segs) < 2:
+            continue
+        ids = klustra(segs)
+        if max(ids) > 0:
+            clusters[namn] = ids
+
+    return streets, roundabouts, clusters
 
 
 def main():
@@ -106,7 +185,7 @@ def main():
             print('    pausar 20s (Overpass rate limit)')
             time.sleep(20)
 
-        streets, roundabouts = to_app_format(fetch(source['bbox']))
+        streets, roundabouts, clusters = to_app_format(fetch(source['bbox']))
         done += 1
         if not streets:
             print('    VARNING: inga gator, hoppar över skrivning')
@@ -122,6 +201,7 @@ def main():
             'count': len(streets),
             'streets': streets,
             'roundabouts': roundabouts,
+            'clusters': clusters,
         }
         with io.open(out_path, 'w', encoding='utf-8', newline='') as fh:
             fh.write(json.dumps(payload, ensure_ascii=False, separators=(',', ':')))

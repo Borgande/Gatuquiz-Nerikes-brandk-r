@@ -244,12 +244,20 @@ async function laddaGator(){
     var src=STATION.sources[i];
     try{
       var d=await xhrGet(src.streetsUrl+'?t='+Date.now());
+      var kl=d.clusters||{};
       Object.keys(d.streets||{}).forEach(function(n){
         if(gator[n]) return; // samma dedup som addStreet() i appen
-        var coords=[];
-        d.streets[n].forEach(function(seg){coords=coords.concat(seg);});
-        // segs ritas var för sig, coords används för områdestilldelning
-        gator[n]={segs:d.streets[n],coords:coords};
+        var segs=d.streets[n], ids=kl[n];
+        // Samma uppdelning som appen: gatunamn som finns i flera byar
+        // behandlas som separata förekomster.
+        var grupper={};
+        segs.forEach(function(seg,i){
+          var k=(ids&&ids[i]!=null)?ids[i]:0;
+          if(!grupper[k]) grupper[k]={segs:[],coords:[]};
+          grupper[k].segs.push(seg);
+          grupper[k].coords=grupper[k].coords.concat(seg);
+        });
+        gator[n]={forekomster:Object.keys(grupper).map(function(k){return grupper[k];})};
       });
     }catch(e){ console.warn('Kunde inte ladda '+src.streetsUrl,e); }
   }
@@ -374,9 +382,14 @@ function raknaOm(){
   tackning={};
   var namn=Object.keys(gator), ovrigt=0;
   namn.forEach(function(n){
-    var omr=assignAreas(gator[n].coords);
-    if(omr.length===1&&omr[0]==='Övrigt') ovrigt++;
-    omr.forEach(function(a){tackning[a]=(tackning[a]||0)+1;});
+    // Ett namn räknas som täckt om någon förekomst ligger i ett område —
+    // samma regel som areaStreets i appen.
+    var alla=[];
+    gator[n].forekomster.forEach(function(f){
+      assignAreas(f.coords).forEach(function(a){ if(alla.indexOf(a)<0) alla.push(a); });
+    });
+    if(alla.length===1&&alla[0]==='Övrigt') ovrigt++;
+    alla.forEach(function(a){tackning[a]=(tackning[a]||0)+1;});
   });
   var totalt=namn.length, tackta=totalt-ovrigt;
   var pct=totalt?Math.round(ovrigt/totalt*100):0;
@@ -393,14 +406,18 @@ function ritaGator(visaOvrigt){
   if(gatlager) map.removeLayer(gatlager);
   var linjer=[];
   Object.keys(gator).forEach(function(n){
-    var utanfor=assignAreas(gator[n].coords)[0]==='Övrigt';
-    if(!visaOvrigt&&!utanfor) return;
-    var stil={color:utanfor?'#ff4444':'#3a7cbf',
-      weight:utanfor?3:1.5,
-      opacity:utanfor?0.9:0.35,
-      interactive:false};
-    // Ett polyline per segment - annars dras en rak linje mellan segmenten
-    gator[n].segs.forEach(function(seg){ linjer.push(L.polyline(seg,stil)); });
+    // Färgas per förekomst: en gata kan vara täckt i tätorten men röd i byn,
+    // och det är just den röda som behöver en polygon.
+    gator[n].forekomster.forEach(function(f){
+      var utanfor=assignAreas(f.coords)[0]==='Övrigt';
+      if(!visaOvrigt&&!utanfor) return;
+      var stil={color:utanfor?'#ff4444':'#3a7cbf',
+        weight:utanfor?3:1.5,
+        opacity:utanfor?0.9:0.35,
+        interactive:false};
+      // Ett polyline per segment - annars dras en rak linje mellan segmenten
+      f.segs.forEach(function(seg){ linjer.push(L.polyline(seg,stil)); });
+    });
   });
   gatlager=L.layerGroup(linjer).addTo(map);
   if(Object.keys(lager).length) Object.keys(lager).forEach(function(n){lager[n].bringToFront();});

@@ -624,12 +624,16 @@ async function loadSource(id){
   if(cfg.streetsUrl){
     try{
       document.getElementById('load-status').textContent='Laddar '+cfg.label+'…';
-      var pre=await xhrGet(cfg.streetsUrl);
+      // Cache-busting som för tenants.json och areas.geojson. Utan det
+      // serverar webbläsaren gammal gatudata efter att filerna uppdaterats,
+      // och quizet kör vidare på förra veckans gatunät.
+      var pre=await xhrGet(cfg.streetsUrl+'?t='+Date.now());
       if(pre&&pre.streets){
         var names=Object.keys(pre.streets);
         // pre.roundabouts saknas i äldre datafiler – då ritas inga rondeller överst
         var rab=pre.roundabouts||{};
-        names.forEach(function(n){addStreet(n,pre.streets[n],rab[n]);});
+        var kl=pre.clusters||{};
+        names.forEach(function(n){addStreet(n,pre.streets[n],rab[n],kl[n]);});
         bringRoundaboutsToFront();
         console.log(cfg.label+': '+names.length+' gator från '+cfg.streetsUrl+
                     ' (genererad '+(pre.generated||'okänt datum')+')');
@@ -718,9 +722,13 @@ function assignAreas(allCoords){
   return matches.length>0?matches:['Övrigt'];
 }
  
-function addStreet(name,segList,roundFlags){
+// clusterIds anger vilken förekomst varje segment tillhör. Gatunamn som
+// Skolvägen finns i varenda by; utan uppdelning slås de ihop till ett objekt
+// och hela klumpen kan hamna i ett område två mil bort. Saknas fältet
+// (äldre datafiler) behandlas gatan som en enda förekomst.
+function addStreet(name,segList,roundFlags,clusterIds){
   if(allStreets[name]) return; // no duplicates
-  var polys=[],allCoords=[];
+  var polys=[],allCoords=[],grupper={};
   segList.forEach(function(coords,i){
     allCoords=allCoords.concat(coords);
     var hit=L.polyline(coords,{color:'transparent',weight:22,opacity:0,interactive:true});
@@ -730,10 +738,27 @@ function addStreet(name,segList,roundFlags){
     hit.on('mouseout', function(){if(phase==='playing'&&isActive(name)&&!wrongFlash.has(name))applyStyle(name,pinnedStyles.get(name)||S.normal);});
     hit.addTo(map); vis.addTo(map);
     if(roundFlags&&roundFlags[i]) roundaboutPolys.push(hit,vis);
-    polys.push({hit:hit,vis:vis});
+    var par={hit:hit,vis:vis};
+    polys.push(par);
+    var k=(clusterIds&&clusterIds[i]!=null)?clusterIds[i]:0;
+    if(!grupper[k]) grupper[k]={polys:[],coords:[]};
+    grupper[k].polys.push(par);
+    grupper[k].coords=grupper[k].coords.concat(coords);
   });
-  var areas=assignAreas(allCoords);
-  allStreets[name]={polys:polys,bounds:L.latLngBounds(allCoords),areas:areas,coords:allCoords};
+
+  // Områdestilldelning sker per förekomst, inte per namn
+  var clusters=Object.keys(grupper).map(function(k){
+    var g=grupper[k];
+    return {polys:g.polys,coords:g.coords,areas:assignAreas(g.coords)};
+  });
+
+  var areas=[];
+  clusters.forEach(function(c){
+    c.areas.forEach(function(a){ if(areas.indexOf(a)<0) areas.push(a); });
+  });
+
+  allStreets[name]={polys:polys,clusters:clusters,
+    bounds:L.latLngBounds(allCoords),areas:areas,coords:allCoords};
   areas.forEach(function(a){
     if(!areaStreets[a]) areaStreets[a]=[];
     if(areaStreets[a].indexOf(name)<0) areaStreets[a].push(name);
@@ -1090,7 +1115,16 @@ function applyStyle(n,s){
     if(l) l.setStyle({color:s.color,weight:s.weight||2,opacity:s.opacity,fillColor:s.color,fillOpacity:s.opacity>0?0.35:0});
     return;
   }
-  if(allStreets[n])allStreets[n].polys.forEach(function(p){p.vis.setStyle(s);});
+  var st=allStreets[n];
+  if(!st) return;
+  // Färga bara de förekomster som ligger i ett valt område. Utan detta lyser
+  // t.ex. Kvarngatan upp i tre byar samtidigt när man övar på en av dem.
+  var rel=(st.clusters||[]).filter(function(c){
+    return c.areas.some(function(a){return selectedAreas.has(a);});
+  });
+  if(!rel.length) rel=st.clusters||[];
+  if(!rel.length){ st.polys.forEach(function(p){p.vis.setStyle(s);}); return; }
+  rel.forEach(function(c){ c.polys.forEach(function(p){p.vis.setStyle(s);}); });
 }
 function showActive(){activeNames.forEach(function(n){applyStyle(n,S.normal);});}
 function resetActive(){activeNames.forEach(function(n){if(!correctStreets.has(n)&&!pinnedStyles.has(n))applyStyle(n,S.normal);});}

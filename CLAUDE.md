@@ -184,7 +184,9 @@ säkrare än att riva staten för hand.
 Utan parametrar landar man alltså på Örebro precis som förut.
 
 **Laddning** — `loadSource(id)` läser i första hand `streetsUrl` (förgenererad fil) och
-faller tillbaka på Overpass endast om filen saknas. Källor cachas i `loadedSources`.
+faller tillbaka på Overpass endast om filen saknas. Alla tre datafilerna hämtas med
+`?t=`-parameter; utan den serverar webbläsaren gammal gatudata efter en uppdatering
+och quizet kör vidare på förra veckans gatunät. Källor cachas i `loadedSources`.
 Knapparna i `#muni-bar` renderas av `buildSourceBar()`; har stationen bara **en** källa
 döljs hela raden.
 
@@ -205,13 +207,26 @@ python tools/build-streets.py            # alla källor som saknar fil
 python tools/build-streets.py hallsberg  # tvinga om en enskild källa
 ```
 
-Format: `{org, station, source, bbox, generated, count, streets:{…}, roundabouts:{…}}`
+**Vägtyper som hämtas** — utöver de körbara typerna tas `*_link` (på- och avfarter)
+och `pedestrian` (gågator och torg) med som fullvärdiga. `cycleway` hämtas men behålls
+**bara om gatunamnet redan finns som körbar väg** — så blir t.ex. Norra Skyttegatans
+cykelvägsdel komplett utan att rena cykelvägar blir egna svar. `construction`,
+`footway`, `path`, `steps` och `bridleway` utesluts alltid.
+
+⚠️ **`clusters` delar upp gator med samma namn på olika platser.** Skolvägen finns i
+varenda by; utan uppdelning slås alla ihop till ett objekt och hela klumpen kan hamna
+i ett område två mil bort — då lyser gatan upp i tre byar samtidigt. `klustra()` i
+build-skriptet grupperar segment som hänger ihop inom **300 m**, och `addStreet()` kör
+`assignAreas()` **per förekomst**. `applyStyle()` färgar bara förekomster vars områden
+finns i `selectedAreas`. Byrsta har 59 gator vars förekomster hamnar i olika områden.
+
+Format: `{org, station, source, bbox, generated, count, streets:{…}, roundabouts:{…}, clusters:{…}}`
 — `streets` är `namn → [segment]` och matchar vad `addStreet(namn, segList, roundFlags)`
 förväntar sig. `roundabouts` är `namn → [bool]`, parallell med segmentlistan, och tas
 bara med för gator som faktiskt har en rondell. Fältet är **valfritt**: saknas det
 (äldre filer) ritas inga rondeller överst, men allt annat fungerar.
 
-Nuläge: Örebro 1 266 gator, Kumla 543, Hallsberg 579, Nora 189.
+Nuläge: Örebro 1 280 gator, Kumla 545, Hallsberg 580, Nora 189.
 
 **Nora-polygonen är härledd ur datan**, inte ritad för hand: ett konvext hölje kring
 samtliga gatukoordinater, buffrat 2 %. Därför hamnar 0 % i "Övrigt" (jämför Byrstas

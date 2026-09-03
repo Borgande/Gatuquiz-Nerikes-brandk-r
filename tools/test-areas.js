@@ -108,5 +108,44 @@ console.log('--- admin.html far inte glida isar fran index.html ---');
   }
 }
 
+console.log('--- gator med samma namn pa olika platser ---');
+// En gata som heter likadant i flera byar far INTE slas ihop: da hamnar hela
+// klumpen i ett omrade och lyser upp tva mil bort. build-streets.py delar dem
+// via clusters-faltet.
+{
+  const geoRiktig=JSON.parse(fs.readFileSync(path.join(ROOT,'areas.geojson'),'utf8'));
+  let medKluster=0, delade=[];
+  for(const fil of fs.readdirSync(path.join(ROOT,'data'))){
+    if(!fil.endsWith('.streets.json')) continue;
+    const d=JSON.parse(fs.readFileSync(path.join(ROOT,'data',fil),'utf8'));
+    const kl=d.clusters||{};
+    medKluster+=Object.keys(kl).length;
+    const station=d.station||'orebro';
+    AREAS_GEO={type:'FeatureCollection',
+      features:geoRiktig.features.filter(f=>(f.properties.station||'orebro')===station)};
+    for(const namn of Object.keys(kl)){
+      const segs=d.streets[namn], ids=kl[namn], g={};
+      segs.forEach((seg,i)=>{ (g[ids[i]]=g[ids[i]]||[]).push(...seg); });
+      const per=Object.values(g).map(c=>assignAreas(c).join('+'));
+      if(new Set(per).size>1) delade.push(namn+' ('+station+'): '+per.join(' | '));
+    }
+  }
+  ok(medKluster>0,'datafilerna har clusters-faltet ('+medKluster+' gator uppdelade)');
+  ok(delade.length>0,'minst en gata har forekomster i olika omraden ('+delade.length+' st)');
+  if(delade.length) console.log('       t.ex. '+delade[0]);
+}
+
+console.log('--- vagtyper som ska finnas ---');
+{
+  const o=JSON.parse(fs.readFileSync(path.join(ROOT,'data','nerikes-orebro.streets.json'),'utf8'));
+  // Nygatan har en gagatedel, Norra Skyttegatan en cykelvagsdel. Bada saknades
+  // innan filtret utokades.
+  ok((o.streets['Nygatan']||[]).length>=8,'Nygatan har gagate- och pafartsdelarna');
+  ok((o.streets['Norra Skyttegatan']||[]).length>=2,'Norra Skyttegatan har cykelvagsdelen');
+  ok(!!o.streets['Fisktorget'],'torg finns med som egna namn');
+  // Rena cykelvagar ska INTE bli egna svar
+  ok(!o.streets['Fargaregrand']&&!o.streets['Holmen runt'],'rena cykelvagar ar inte egna svar');
+}
+
 console.log(fail?('\n'+fail+' TEST MISSLYCKADES'):'\nALLA TESTER OK');
 process.exit(fail?1:0);

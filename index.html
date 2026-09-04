@@ -41,7 +41,7 @@ const firebaseConfig = {
     #error-box{display:none;background:rgba(255,68,68,0.1);border:1px solid #ff4444;border-radius:12px;padding:16px;max-width:340px;font-size:.83rem;line-height:1.7;color:#ffaaaa}
     #use-fallback-btn{background:#ff6400;color:#fff;border:none;border-radius:8px;padding:10px 22px;font-size:.9rem;font-weight:700;cursor:pointer;margin-top:6px}
  
-    #area-screen,#area-quiz-screen{position:fixed;inset:0;background:#0d0d0d;z-index:8000;display:none;flex-direction:column;align-items:center;padding:20px 16px;overflow-y:auto;gap:10px}
+    #area-screen,#area-quiz-screen,#matar-screen{position:fixed;inset:0;background:#0d0d0d;z-index:8000;display:none;flex-direction:column;align-items:center;padding:20px 16px;overflow-y:auto;gap:10px}
     #area-screen h2{color:#ff6400;font-size:1.3rem}
     #area-screen p{color:#888;font-size:.82rem}
     #data-source-badge{font-size:.72rem;padding:4px 12px;border-radius:20px;font-weight:600}
@@ -137,14 +137,14 @@ const firebaseConfig = {
     .area-lbl::before{display:none}
 
     /* ── Stations-, orts- och områdesväljare ────────── */
-    #muni-bar,#station-bar,#area-quiz-muni-bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+    #muni-bar,#station-bar,#area-quiz-muni-bar,#matar-muni-bar{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
     .station-btn{display:flex;flex-direction:column;align-items:center;gap:1px;line-height:1.25}
     .station-sub{font-size:.67rem;font-weight:600;opacity:.6;letter-spacing:.2px}
     .muni-btn{background:rgba(255,255,255,0.04);border:2px solid #3a3a3a;color:#999;border-radius:10px;padding:8px 18px;cursor:pointer;font-size:.88rem;font-weight:700;min-height:44px;transition:all .2s}
     .muni-btn:hover{border-color:#ff6400;color:#ccc}
     .muni-btn.active{background:rgba(255,100,0,0.15);border-color:#ff6400;color:#ff6400}
     .muni-btn:disabled{opacity:.55;cursor:wait}
-    .muni-lbl,.station-lbl,.aq-lbl{font-size:.76rem;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:.5px;width:100%;max-width:580px;text-align:left;padding:0 2px}
+    .muni-lbl,.station-lbl,.aq-lbl,.mg-lbl{font-size:.76rem;color:#666;font-weight:600;text-transform:uppercase;letter-spacing:.5px;width:100%;max-width:580px;text-align:left;padding:0 2px}
 
     /* ── Leaderboard ────────────────────────────────── */
     .lb-table{width:100%;border-collapse:collapse;font-size:.85rem}
@@ -204,6 +204,7 @@ const firebaseConfig = {
   <button id="start-btn" onclick="beginQuiz()" disabled>Starta övning →</button>
   <button class="sel-btn" style="border-color:#ff6400;color:#ff6400;font-size:.85rem;padding:9px 22px" onclick="openLeaderboard()">Topplista 🏆</button>
   <button class="sel-btn" onclick="goAreaQuiz()">Öva på områden 📍</button>
+  <button class="sel-btn" id="matar-btn" onclick="goMatarQuiz()" style="display:none">Öva på matargator 🛣</button>
 </div>
 
 <!-- AREA QUIZ MUNICIPALITY PICKER -->
@@ -217,6 +218,21 @@ const firebaseConfig = {
   <p id="aq-sel-info">0 område(n) valda</p>
   <button id="aq-start-btn" onclick="beginAreaQuiz()" disabled>Starta övning →</button>
   <button class="sel-btn" onclick="goAreaQuizPicker()">← Tillbaka</button>
+</div>
+
+<div id="matar-screen" style="display:none">
+  <div style="font-size:2.2rem">🛣</div>
+  <h2>Öva på matargator</h2>
+  <p style="color:#888;font-size:.8rem;max-width:340px;text-align:center">
+    Genomfartsnätet – huvudleder och förbindelser mellan stadsdelar,
+    utan bostadsgator.</p>
+  <p class="mg-lbl">Välj orter:</p>
+  <div id="matar-muni-bar">
+    <!-- knappar renderas av buildMatarSourceBar() -->
+  </div>
+  <p id="mg-sel-info">0 matargator</p>
+  <button id="mg-start-btn" onclick="beginMatarQuiz()" disabled>Starta övning →</button>
+  <button class="sel-btn" onclick="goMatarPicker()">← Tillbaka</button>
 </div>
 
 <!-- GAME -->
@@ -500,7 +516,9 @@ const pinnedStyles=new Map(); // name → stilobjekt, ändras ej av hover
 const wrongFlash=new Set();   // tillfälligt röda gator (ej target), hover skall ignoreras
 let quizStartTime=null;
 let areasLayer=null;
-let quizMode='streets'; // 'streets'|'areas'
+let quizMode='streets'; // 'streets'|'areas'|'matar'
+const matargator=new Set();   // gatunamn i genomfartsnätet (ur datafilerna)
+let matarSources=new Set();   // orter valda i matargator-övningen
 let areaQuizLayers={};  // områdesnamn -> Leaflet layer (area-quizläge)
 let areaQuizGroup=null; // L.geoJSON-gruppen för area-quizläget
 let areaQuizSources=new Set(); // datakällor valda i områdesövningen
@@ -638,7 +656,10 @@ async function loadSource(id){
         // pre.roundabouts saknas i äldre datafiler – då ritas inga rondeller överst
         var rab=pre.roundabouts||{};
         var kl=pre.clusters||{};
-        names.forEach(function(n){addStreet(n,pre.streets[n],rab[n],kl[n]);});
+        // Matargator per ort – grunden för "ett område per ort" i det läget.
+        // Saknas fältet (äldre fil) döljs hela matargator-övningen.
+        (pre.matargator||[]).forEach(function(n){matargator.add(n);});
+        names.forEach(function(n){addStreet(n,pre.streets[n],rab[n],kl[n],id);});
         bringRoundaboutsToFront();
         console.log(cfg.label+': '+names.length+' gator från '+cfg.streetsUrl+
                     ' (genererad '+(pre.generated||'okänt datum')+')');
@@ -731,7 +752,7 @@ function assignAreas(allCoords){
 // Skolvägen finns i varenda by; utan uppdelning slås de ihop till ett objekt
 // och hela klumpen kan hamna i ett område två mil bort. Saknas fältet
 // (äldre datafiler) behandlas gatan som en enda förekomst.
-function addStreet(name,segList,roundFlags,clusterIds){
+function addStreet(name,segList,roundFlags,clusterIds,kallId){
   if(allStreets[name]) return; // no duplicates
   var polys=[],allCoords=[],grupper={};
   segList.forEach(function(coords,i){
@@ -762,7 +783,7 @@ function addStreet(name,segList,roundFlags,clusterIds){
     c.areas.forEach(function(a){ if(areas.indexOf(a)<0) areas.push(a); });
   });
 
-  allStreets[name]={polys:polys,clusters:clusters,
+  allStreets[name]={polys:polys,clusters:clusters,source:kallId||null,
     bounds:L.latLngBounds(allCoords),areas:areas,coords:allCoords};
   areas.forEach(function(a){
     if(!areaStreets[a]) areaStreets[a]=[];
@@ -987,6 +1008,129 @@ function goAreaQuizPicker(){
   document.getElementById('area-quiz-screen').style.display='none';
   document.getElementById('area-screen').style.display='flex';
 }
+
+// ═══════════════════════════════════════════════════
+//  ÖVA PÅ MATARGATOR (genomfartsnätet)
+//
+//  Använder inte områdespolygonerna alls – urvalet är grovt, en ort i taget,
+//  eftersom en matargata går tvärs igenom flera stadsdelar.
+// ═══════════════════════════════════════════════════
+// Vilken ort en gata hör till – avgörs GEOGRAFISKT, inte av vilken fil som
+// laddade först. Kumlas och Hallsbergs bbox:ar överlappar (59.06–59.14), så
+// load-order gav fel svar: Blomstergatan i Kumla hamnade under Hallsberg.
+var _ortBboxar=null;
+function ortForGata(namn){
+  var st=allStreets[namn];
+  if(!st) return null;
+  if(st.ort!==undefined) return st.ort;
+  if(!_ortBboxar){
+    _ortBboxar=((STATION&&STATION.sources)||[]).map(function(src){
+      var m=(src.bbox||'').match(/\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)/);
+      if(!m) return null;
+      var a=+m[1],b=+m[2],c=+m[3],d=+m[4];
+      return {id:src.id,minLat:a,minLon:b,maxLat:c,maxLon:d,
+              mLat:(a+c)/2,mLon:(b+d)/2};
+    }).filter(Boolean);
+  }
+  var p=st.bounds.getCenter();
+  var inne=_ortBboxar.filter(function(b){
+    return p.lat>=b.minLat&&p.lat<=b.maxLat&&p.lng>=b.minLon&&p.lng<=b.maxLon;
+  });
+  var vald;
+  if(inne.length===1){
+    vald=inne[0].id;
+  }else if(inne.length>1){
+    // Ligger i flera bbox:ar – ta den vars mittpunkt är närmast
+    vald=inne.slice().sort(function(x,y){
+      return (Math.pow(x.mLat-p.lat,2)+Math.pow(x.mLon-p.lng,2))-
+             (Math.pow(y.mLat-p.lat,2)+Math.pow(y.mLon-p.lng,2));
+    })[0].id;
+  }else{
+    vald=st.source; // utanför alla bbox:ar – behåll filens ort
+  }
+  st.ort=vald;
+  return vald;
+}
+
+function matarNamn(){
+  return Object.keys(allStreets).filter(function(n){
+    return matargator.has(n) && matarSources.has(ortForGata(n));
+  });
+}
+
+function updateMatarInfo(){
+  var n=matarNamn().length;
+  document.getElementById('mg-sel-info').textContent=
+    n+(n===1?' matargata':' matargator');
+  document.getElementById('mg-start-btn').disabled=(n===0);
+}
+
+// Speglar buildSourceBar(); döljs när stationen bara har en ort.
+function buildMatarSourceBar(){
+  var bar=document.getElementById('matar-muni-bar');
+  var lbl=document.querySelector('.mg-lbl');
+  if(!bar) return;
+  var sources=(STATION&&STATION.sources)||[];
+  bar.innerHTML='';
+  var ensam=sources.length<2;
+  bar.style.display=ensam?'none':'flex';
+  if(lbl) lbl.style.display=ensam?'none':'';
+  if(ensam) return;
+  sources.forEach(function(src){
+    var b=document.createElement('button');
+    b.id='mg-btn-'+src.id;
+    b.className='muni-btn'+(matarSources.has(src.id)?' active':'');
+    b.textContent=src.label;
+    b.onclick=function(){toggleMatarSource(src.id);};
+    bar.appendChild(b);
+  });
+}
+
+function toggleMatarSource(id){
+  var btn=document.getElementById('mg-btn-'+id);
+  if(matarSources.has(id)){
+    if(matarSources.size===1) return; // behåll alltid minst en
+    matarSources.delete(id);
+    if(btn) btn.classList.remove('active');
+  }else{
+    matarSources.add(id);
+    if(btn) btn.classList.add('active');
+  }
+  updateMatarInfo();
+}
+
+// Äldre datafiler saknar matargator-fältet. Då döljs hela läget hellre än
+// att erbjuda ett tomt quiz.
+function uppdateraMatarKnapp(){
+  var b=document.getElementById('matar-btn');
+  if(b) b.style.display=matargator.size?'':'none';
+}
+
+function goMatarQuiz(){
+  document.getElementById('area-screen').style.display='none';
+  document.getElementById('matar-screen').style.display='flex';
+  matarSources=new Set(activeSources);
+  buildMatarSourceBar();
+  updateMatarInfo();
+}
+
+function goMatarPicker(){
+  document.getElementById('matar-screen').style.display='none';
+  document.getElementById('area-screen').style.display='flex';
+}
+
+function beginMatarQuiz(){
+  var namn=matarNamn();
+  if(!namn.length) return;
+  quizMode='matar';
+  activeNames=namn;
+  // selectedAreas rörs INTE – användarens områdesval ska finnas kvar när man
+  // går tillbaka. applyStyle() hanterar matarläget separat i stället.
+  document.getElementById('matar-screen').style.display='none';
+  var coords=namn.map(function(n){return allStreets[n].bounds.getCenter();});
+  if(coords.length) map.fitBounds(L.latLngBounds(coords).pad(0.1));
+  startGame();
+}
 function buildAreaQuizLayer(){
   if(areaQuizGroup){map.removeLayer(areaQuizGroup);areaQuizGroup=null;}
   areaQuizLayers={};
@@ -1122,6 +1266,9 @@ function applyStyle(n,s){
   }
   var st=allStreets[n];
   if(!st) return;
+  // I matargator-läget används inga områden. En genomfartsled går tvärs igenom
+  // staden och ska lysa i hela sin längd.
+  if(quizMode==='matar'){ st.polys.forEach(function(p){p.vis.setStyle(s);}); return; }
   // Färga bara de förekomster som ligger i ett valt område. Utan detta lyser
   // t.ex. Kvarngatan upp i tre byar samtidigt när man övar på en av dem.
   var rel=(st.clusters||[]).filter(function(c){
@@ -1362,6 +1509,7 @@ function loadFallback(){
   buildStationBar();
   buildSourceBar();
   buildAreaGrid();
+  uppdateraMatarKnapp();
   goArea();
 }
  
@@ -1389,6 +1537,7 @@ function loadFallback(){
     buildStationBar();
     buildSourceBar();
     buildAreaGrid();
+    uppdateraMatarKnapp();
     goArea();
   }catch(err){
     console.warn('Start misslyckades, använder reservdata:',err);

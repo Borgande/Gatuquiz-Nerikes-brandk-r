@@ -37,6 +37,12 @@ KOMPLETTERANDE = 'cycleway'
 
 # Aldrig med: construction ar vagar under byggnation, resten ar inte korbara.
 UTESLUTNA = ('construction', 'footway', 'path', 'steps', 'bridleway')
+
+# Matargator = genomfartsnatet. Vald tillsammans med anvandaren efter att natet
+# ritats upp pa kartan: dessa klasser bildar ett sammanhangande nat, medan
+# unclassified bara ger losryckta stumpar i industriomraden och utkanter.
+# Byts definitionen har maste datan regenereras.
+MATARKLASSER = ('motorway', 'trunk', 'primary', 'secondary', 'tertiary')
 DECIMALS = 5  # ~1 m upplösning; halverar filstorleken mot full precision
 # Overpass svarar 406 på anrop utan riktig User-Agent och ber uttryckligen om
 # att klienten identifierar sig.
@@ -123,6 +129,7 @@ def to_app_format(data):
     streets = {}
     roundabouts = {}
     typer = {}
+    matar = set()
     for way in data.get('elements', []):
         tags = way.get('tags') or {}
         name = tags.get('name')
@@ -134,6 +141,10 @@ def to_app_format(data):
         if len(seg) >= 2:
             streets.setdefault(name, []).append(seg)
             typer.setdefault(name, set()).add(hw)
+            # En gata raknas som matargata om NAGON av dess delar ar det;
+            # en genomfartsled kan ha korta partier klassade lagre.
+            if hw in MATARKLASSER:
+                matar.add(name)
             # Parallell lista med segmentens rondellflaggor – appen ritar
             # rondeller överst så de inte göms under korsande gator.
             roundabouts.setdefault(name, []).append(tags.get('junction') == 'roundabout')
@@ -157,7 +168,10 @@ def to_app_format(data):
         if max(ids) > 0:
             clusters[namn] = ids
 
-    return streets, roundabouts, clusters
+    # Bara namn som overlevde cykelvagsfiltret ovan
+    matargator = sorted(n for n in matar if n in streets)
+
+    return streets, roundabouts, clusters, matargator
 
 
 def main():
@@ -185,7 +199,7 @@ def main():
             print('    pausar 20s (Overpass rate limit)')
             time.sleep(20)
 
-        streets, roundabouts, clusters = to_app_format(fetch(source['bbox']))
+        streets, roundabouts, clusters, matargator = to_app_format(fetch(source['bbox']))
         done += 1
         if not streets:
             print('    VARNING: inga gator, hoppar över skrivning')
@@ -202,6 +216,7 @@ def main():
             'streets': streets,
             'roundabouts': roundabouts,
             'clusters': clusters,
+            'matargator': matargator,
         }
         with io.open(out_path, 'w', encoding='utf-8', newline='') as fh:
             fh.write(json.dumps(payload, ensure_ascii=False, separators=(',', ':')))

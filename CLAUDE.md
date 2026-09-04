@@ -73,11 +73,18 @@ ignorerade via mönstren `areas.geojson backup*` och `areasbackup*`.
 
 - **JavaScript** rader ~260–slutet — all logik i ett `<script>`-block
 
-**Två quizlägen** styrs av `quizMode`:
+**Tre quizlägen** styrs av `quizMode`:
 - `'streets'` – standard: ett gatunamn visas, klicka rätt gata
 - `'areas'` – "Öva på områden": ett områdesnamn visas, klicka rätt polygon.
   Egen skärm `#area-quiz-screen`, startas via `goAreaQuiz()` → `beginAreaQuiz()`.
   Urvalet styrs av `areaQuizSources` (datakällor), som initieras från `activeSources`.
+- `'matar'` – "Öva på matargator": bara genomfartsnätet. Egen skärm `#matar-screen`,
+  startas via `goMatarQuiz()` → `beginMatarQuiz()`. Använder **inte** områdena alls –
+  urvalet är per ort, eftersom en matargata går tvärs igenom flera stadsdelar.
+
+⚠️ **`'matar'` sparar inget resultat.** `showEnd()` jämför med `'streets'`, så både
+Firestore-skrivningen och topplisteknappen faller bort automatiskt. Ett pass på 155
+matargator är inte jämförbart med 67 gator i Centrum.
 
 ---
 
@@ -224,6 +231,20 @@ från `data/<org>-<källa>.streets.json`.
 python tools/build-streets.py            # alla källor som saknar fil
 python tools/build-streets.py hallsberg  # tvinga om en enskild källa
 ```
+
+**Matargator** — `MATARKLASSER` i build-skriptet (`motorway`, `trunk`, `primary`,
+`secondary`, `tertiary`) avgör vilka gatunamn som hamnar i det valfria fältet
+`matargator`. Definitionen valdes tillsammans med användaren efter att nätet ritats
+upp på kartan: dessa klasser bildar ett sammanhängande nät, medan `unclassified`
+bara ger lösryckta stumpar i industriområden. Örebro 155, Kumla 74, Hallsberg 61,
+Nora 16. Ändras definitionen måste datan regenereras. Saknas fältet döljs hela
+övningsläget via `uppdateraMatarKnapp()`.
+
+⚠️ **Orten avgörs geografiskt, inte av vilken fil gatan laddades ur.** `ortForGata()`
+matchar gatans mittpunkt mot källornas bbox:ar. Med load-order hamnade Blomstergatan
+(59.137, mitt i Kumla) under Hallsberg, eftersom bbox:arna överlappar och
+Hallsberg-filen råkade läsas först. Fördelningen blev 24/62 i stället för korrekta
+57/29.
 
 **Vägtyper som hämtas** — utöver de körbara typerna tas `*_link` (på- och avfarter)
 och `pedestrian` (gågator och torg) med som fullvärdiga. `cycleway` hämtas men behålls
@@ -455,6 +476,12 @@ de ger olika svar — den logiken har redan orsakat en bugg en gång. Ändrar du
 | `toggleAreaQuizSource(id)` | Väljer/avväljer ort i områdesövningen |
 | `areaQuizCount()` | Antal områden som matchar valda källor |
 | `beginAreaQuiz()` | Startar områdesquizet (`quizMode='areas'`) |
+| `goMatarQuiz()` | Öppnar matargator-övningen, speglar `activeSources` |
+| `buildMatarSourceBar()` | Renderar ortsknappar; döljs vid en enda ort |
+| `matarNamn()` | Matargator i valda orter |
+| `ortForGata(namn)` | Vilken ort en gata hör till – geografiskt, inte via filordning |
+| `beginMatarQuiz()` | Startar matargator-quizet (`quizMode='matar'`) |
+| `uppdateraMatarKnapp()` | Döljer läget om datafilerna saknar `matargator` |
 | `reloadAreas(btn)` | Laddar om `areas.geojson` + omtilldelar alla gator |
 | `synkaKartstorlek()` | Finns även i `admin.html`; MapLibre rättar inte storleken själv |
 | `doSkip()` | Hoppar över fråga, visar gatan grön (S.reveal) |

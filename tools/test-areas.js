@@ -147,5 +147,26 @@ console.log('--- vagtyper som ska finnas ---');
   ok(!o.streets['Fargaregrand']&&!o.streets['Holmen runt'],'rena cykelvagar ar inte egna svar');
 }
 
+console.log('--- matargator ---');
+{
+  const o=JSON.parse(fs.readFileSync(path.join(ROOT,'data','nerikes-orebro.streets.json'),'utf8'));
+  const m=new Set(o.matargator||[]);
+  ok(m.size>0,'matargator-faltet finns ('+m.size+' gator i Orebro)');
+  ok(m.size<o.count*0.3,'matargator ar en delmangd, inte hela natet ('+
+     Math.round(m.size/o.count*100)+' % av gatorna)');
+
+  // Genomfartsleder ska vara med
+  for(const n of ['Adolfsbergsvagen','Adolfsbergsvägen']){
+    if(o.streets[n]){ ok(m.has(n),n+' ar matargata'); break; }
+  }
+  // Bostadsgator ska INTE vara med - det ar hela poangen med lagret
+  for(const n of ['Tegnérgatan','Skolgatan']){
+    if(o.streets[n]) ok(!m.has(n),n+' ar INTE matargata');
+  }
+  // Alla matargator maste finnas som riktiga gator
+  const spoken=[...m].filter(n=>!o.streets[n]);
+  ok(spoken.length===0,'alla matargator finns i streets'+(spoken.length?' (saknas: '+spoken.slice(0,3)+')':''));
+}
+
 console.log(fail?('\n'+fail+' TEST MISSLYCKADES'):'\nALLA TESTER OK');
 process.exit(fail?1:0);

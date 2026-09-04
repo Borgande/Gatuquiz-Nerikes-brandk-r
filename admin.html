@@ -150,7 +150,7 @@ var tackning={};             // områdesnamn → antal gator
 
 var map=L.map('karta',{zoomControl:true}).setView([59.274,15.210],13);
 if(typeof L.maplibreGL==='function'&&typeof maplibregl!=='undefined'){
-  L.maplibreGL({style:'liberty-nolabels.json',attribution:'© OpenStreetMap, OpenFreeMap'}).addTo(map);
+  L.maplibreGL({style:'liberty-nolabels.json?t='+Date.now(),attribution:'© OpenStreetMap, OpenFreeMap'}).addTo(map);
 }else{
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
     {attribution:'Tiles © Esri',maxZoom:16}).addTo(map);

@@ -142,6 +142,17 @@ S.hidden  = {color:'transparent', weight:0, opacity:0}
    Vill man ändra kartans **färger** görs det i `liberty-nolabels.json` – paletten är
    redan värmd mot Lantmäteriets utseende (laxrosa byggnader, varm beige bakgrund).
    Lägg **aldrig** tillbaka ett lager med `text-field`.
+
+   ⚠️ **Bakgrundens vägar är avsiktligt neutralgrå.** Liberty ritar huvudvägar i gult
+   (`#fea`) och motorvägar i orange (`#fc8`). Quizets blå linjer (`S.normal`, opacitet
+   0.6) blandade sig med det gula till grått och blev svårlästa. Hierarkin ligger nu i
+   **ljushet** i stället för färg: småvägar vita, huvudvägar `#ece7dd`, motorvägar
+   `#e0d9cd`. Bakgrundens uppgift är kontext – kvarter, vatten, byggnader – inte att
+   rita gator i konkurrens med svarslagret. Återinför inte de mättade färgerna.
+
+   ⚠️ **Kartstilen hämtas med `?t=`** precis som datafilerna. Utan det serverar
+   webbläsaren gammal stil och färgändringar når aldrig användarna – det tog en stunds
+   felsökning att upptäcka första gången.
 2. **Dubbla polylines per segment** – en tjock transparent hit-target (`weight:22`)
    + en tunn synlig linje. Skapas i `addStreet()`.
 3. **Ingen zoom vid klick** – kartvyn rör sig aldrig automatiskt.

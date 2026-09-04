@@ -320,7 +320,10 @@ function skapaReservkarta(){
 }
 let tileMap;
 if(typeof L.maplibreGL==='function'&&typeof maplibregl!=='undefined'){
-  tileMap=L.maplibreGL({style:'liberty-nolabels.json',attribution:'© OpenStreetMap, OpenFreeMap'});
+  // Cache-busting: utan det serverar webbläsaren gammal kartstil efter en
+  // uppdatering, och färgändringar når aldrig användarna.
+  tileMap=L.maplibreGL({style:'liberty-nolabels.json?t='+Date.now(),
+    attribution:'© OpenStreetMap, OpenFreeMap'});
 }else{
   console.warn('MapLibre kunde inte laddas – använder Esri grå som reservkarta');
   tileMap=skapaReservkarta();

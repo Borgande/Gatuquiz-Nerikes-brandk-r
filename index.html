@@ -509,7 +509,9 @@ let areaQuizSources=new Set(); // datakällor valda i områdesövningen
 //  STYLES
 // ═══════════════════════════════════════════════════
 const S={
-  normal: {color:'#3a7cbf',weight:4,opacity:0.6},
+  // Opacitet 0.85, inte 0.6: vid lagre varde blandar sig blatt med kartans
+  // varma vagfarger och upplevs grat. Kartan behaller sin gula ton i stallet.
+  normal: {color:'#3a7cbf',weight:4,opacity:0.85},
   hover:  {color:'#80c0ff',weight:7,opacity:0.95},
   correct:{color:'#00e676',weight:9,opacity:1},
   wrong:  {color:'#ff1744',weight:9,opacity:1},

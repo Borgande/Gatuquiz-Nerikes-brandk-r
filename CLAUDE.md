@@ -143,12 +143,19 @@ S.hidden  = {color:'transparent', weight:0, opacity:0}
    redan värmd mot Lantmäteriets utseende (laxrosa byggnader, varm beige bakgrund).
    Lägg **aldrig** tillbaka ett lager med `text-field`.
 
-   ⚠️ **Bakgrundens vägar är avsiktligt neutralgrå.** Liberty ritar huvudvägar i gult
-   (`#fea`) och motorvägar i orange (`#fc8`). Quizets blå linjer (`S.normal`, opacitet
-   0.6) blandade sig med det gula till grått och blev svårlästa. Hierarkin ligger nu i
-   **ljushet** i stället för färg: småvägar vita, huvudvägar `#ece7dd`, motorvägar
-   `#e0d9cd`. Bakgrundens uppgift är kontext – kvarter, vatten, byggnader – inte att
-   rita gator i konkurrens med svarslagret. Återinför inte de mättade färgerna.
+   ⚠️ **Vägfärger och linjeopacitet hänger ihop.** Liberty ritar huvudvägar i gult
+   (`#fea`) och motorvägar i orange (`#fc8`). Blått med opacitet 0.6 ovanpå det gula
+   blandar sig till grått, och just huvudstråken är de gator man oftast får som fråga.
+
+   Lösningen är **två inställningar som balanserar varandra** – ändra inte den ena utan
+   att tänka på den andra:
+   - Vägarna är dämpade men fortfarande varma: huvudvägar `#f6edd2`, motorvägar
+     `#f4e0ba`, kantlinjer `#ddcaa6`. Småvägar är vita som förut.
+   - `S.normal.opacity` är **0.85**, inte 0.6, så blått behåller sin färg mot den
+     varma bakgrunden.
+
+   Sänks opaciteten tillbaka mot 0.6 återkommer gråheten. Ska vägarna göras gulare
+   igen måste opaciteten upp ytterligare.
 
    ⚠️ **Kartstilen hämtas med `?t=`** precis som datafilerna. Utan det serverar
    webbläsaren gammal stil och färgändringar når aldrig användarna – det tog en stunds
